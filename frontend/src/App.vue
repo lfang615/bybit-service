@@ -1,26 +1,34 @@
 <template>
-  <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js App"/>
+  <div id="app">
+    <SymbolSearch @selected-symbol="updateSelectedSymbol"/>
+    <BybitOrderForm :selectedSymbol="selectedsymbol"/>
+  </div>
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+
+import BybitOrderForm from "./components/BybitOrderForm.vue";
+import SymbolSearch from "./components/SymbolSearch.vue";
+
+import "bootstrap/dist/css/bootstrap.min.css";
+import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
 export default {
-  name: 'App',
+  name: "App",
   components: {
-    HelloWorld
+    BybitOrderForm,
+    SymbolSearch
+  },
+  data(){
+    return {
+      selectedsymbol: ""
+    }
+  },
+  methods: {
+    updateSelectedSymbol(symbol){
+      this.selectedsymbol = symbol;
+      console.log(this.selectedsymbol)
+    }
   }
-}
+};
 </script>
-
-<style>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
-}
-</style>
