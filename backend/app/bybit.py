@@ -2,13 +2,12 @@ import base64
 import requests
 import httpx
 import datetime
+import json
 import time
 import hmac
 import uuid
 import hashlib
-from Crypto.Hash import SHA256  # install pycryptodome libaray
-from Crypto.Signature import PKCS1_v1_5
-from Crypto.PublicKey import RSA
+from backend.app.models.request.order import Order, OrderRequest, CancelRequest
 
 class BybitAPI:
     def __init__(self, api_key, secret_key):
@@ -17,25 +16,32 @@ class BybitAPI:
         self.secret_key = secret_key
         self.recv_window = str(5000)
         
-    def _send_request(self, method, endpoint, params=""):
+    async def _send_request(self, method, endpoint, payload=""):
         global time_stamp
         time_stamp=str(int(time.time() * 10 ** 3))
         url = f"{self.base_url}{endpoint}"
-        signature = self.genSignature(params)
+
+        if method == "POST":
+            signature = self.genSignature(payload.json())
+        else:
+            signature = self.genSignature(payload)
         
         headers = {
-            "api-key": self.api_key,
-            "api-secret": self.secret_key,
+            "Content-Type": "application/json; charset=utf-8",
             "X-BAPI-SIGN": signature,
             "X-BAPI-API-KEY": self.api_key,
-            "X-BAPI-TIMESTAMP": str(int(datetime.datetime.now().timestamp() * 1000)),
+            "X-BAPI-TIMESTAMP": time_stamp,
             "X-BAPI-RECV-WINDOW": self.recv_window,
             # "cdn-request-id": "cdn_request_id"
             }
-        response = requests.request(method, url, headers=headers, params=params)
-        response.raise_for_status()
-        return response.json()
-    
+        
+        if method == "POST":
+            response = httpx.post(url, headers=headers, data=payload.json())
+            return response.json()
+        else:
+            response = httpx.get(url + "?" + payload, headers=headers)
+            return response.json()
+        
     def genSignature(self, payload):
         param_str= str(time_stamp) + self.api_key + self.recv_window + payload
         hash = hmac.new(bytes(self.secret_key, "utf-8"), param_str.encode("utf-8"),hashlib.sha256)
@@ -46,26 +52,59 @@ class BybitAPI:
         def __init__(self, api):
             self.api = api
         
-        def get_all_positions(self):
+        async def get_all_positions(self):
             endpoint = "/contract/v3/private/position/list"
-            return self.api._send_request("GET", endpoint)
+            return await self.api._send_request("GET", endpoint)
         
-        def get_position(self, symbol):
-            endpoint = f"/v5/private/position/list?symbol={symbol}"
-            return self.api._send_request("GET", endpoint)
+        async def get_position_p_n_l(self, symbol:str):
+            endpoint = f"/contract/v3/private/position/closed-pnl"
+            return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
+        
+        async def get_position_status(self, symbol:str):
+            endpoint = f"/contract/v3/private/position/list"
+            return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
 
-        # Add more methods as needed...
-
-    class Trade:
+    class ContractOrder:
         def __init__(self, api):
             self.api = api
+
+        def set_position_mode(self, order:OrderRequest):
+            match order.side:
+                case 'Buy':
+                    order.positionIdx = 1
+                case 'Sell':
+                    order.positionIdx = 2
         
-        def get_order(self, order_id):
-            endpoint = f"/v2/private/order?order_id={order_id}"
-            return self.api._send_request("GET", endpoint)
+        async def get_open_orders(self, orderId:str):
+            endpoint = "/contract/v3/private/order/unfilled-orders"
+            return await self.api._send_request("GET", endpoint, f'orderId={orderId}')
+        
+        async def get_order_list(self):
+            endpoint = "/contract/v3/private/order/list"
+            return await self.api._send_request("GET", endpoint, f'category=linear&orderFilter=order')
+        
+        async def get_active_orders(self):
+            endpoint = "/contract/v3/private/order/list"
+            return await self.api._send_request("GET", endpoint, f'symbol=APEUSDT')
+        
+        async def get_new_orders(self):
+            endpoint = "/contract/v3/private/order/list"
+            return await self.api._send_request("GET", endpoint, f'orderStatus=New')
 
-        # Add more methods as needed...
+        async def get_order_by_id(self, orderId:str):
+            endpoint = "/contract/v3/private/order/list"
+            return await self.api._send_request("GET", endpoint, f'orderId={orderId}')
 
+        async def place_order(self, order:OrderRequest):
+            endpoint = "/contract/v3/private/order/create"
+            self.set_position_mode(order)
+            return await self.api._send_request("POST", endpoint, order)
+        
+        # async def cancel_order(self, order_id:str):
+        #     endpoint = "/contract/v3/private/order/cancel"
+        #     cancelRequest = CancelRequests(order_id)
+        #     return await self.api._send_request("POST", endpoint, cancelRequest)
+            
     class Account:
         def __init__(self, api):
             self.api = api
