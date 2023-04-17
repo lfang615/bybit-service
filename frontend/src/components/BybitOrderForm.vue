@@ -124,10 +124,10 @@
       async setLeverage() {
         try {
           const payload = {
-            buy_leverage: this.buyLeverage,
-            sell_leverage: this.sellLeverage,
+            buyLeverage: this.buyLeverage,
+            sellLeverage: this.sellLeverage,
           };
-          await axios.post('http://localhost:8000/set-leverage', payload);
+          await axios.post('http://localhost:8000/set_leverage', payload);
           console.log('Leverage set successfully');
         } catch (error) {
           console.error('Failed to set leverage:', error);

@@ -1,14 +1,12 @@
 import base64
-import requests
 import httpx
-import datetime
 import json
 import time
 import hmac
 import uuid
 import hashlib
-from backend.app.models.request.order import Order, OrderRequest, CancelRequest
-from errorcodes import BybitErrorCodes
+from backend.app.models.request.order import Order, OrderRequest, LeverageRequest, CancelRequest
+from backend.app.errorcodes import BybitErrorCodes 
 import logging
 
 class BybitAPIException(Exception):
@@ -40,7 +38,6 @@ class BybitAPI:
             # "cdn-request-id": "cdn_request_id"
             }
         
-
         if method == "POST":
             response = httpx.post(url, headers=headers, data=payload.json())
             response_data = response.json()
@@ -48,9 +45,9 @@ class BybitAPI:
             response = httpx.get(url + "?" + payload, headers=headers)
             response_data = response.json()
         
-        if 'ret_code' in response_data and response_data['ret_code'] != 0:
-            error_message = BybitErrorCodes.get_message(response_data['ret_code'])
-            raise BybitAPIException(f"Error {response_data['ret_code']}: {error_message}")
+        if 'retCode' in response_data and response_data['retCode'] != 0:
+            error_message = BybitErrorCodes.get_message(response_data['retCode'])
+            raise BybitAPIException(f"Error {response_data['retCode']}: {error_message}")
 
         return response_data
         
@@ -70,6 +67,14 @@ class BybitAPI:
                 return await self.api._send_request("GET", endpoint)
             except BybitAPIException as e:
                 logging.error(f"Error getting all positions: {e}")
+                raise
+
+        async def set_leverage(self, leverageRequest:LeverageRequest):
+            try:
+                endpoint = "/contract/v3/private/position/set-leverage"
+                return await self.api._send_request("POST", endpoint, leverageRequest)
+            except BybitAPIException as e:
+                logging.error(f"Error setting leverage: {e}")
                 raise
         
         async def get_position_p_n_l(self, symbol:str):
@@ -136,6 +141,14 @@ class BybitAPI:
                 return await self.api._send_request("GET", endpoint, f'orderId={orderId}')
             except BybitAPIException as e:
                 logging.error(f"Error getting order by id: {e}")
+                raise
+
+        async def get_order_by_symbol(self, symbol:str):
+            try:
+                endpoint = "/contract/v3/private/order/list"
+                return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
+            except BybitAPIException as e:
+                logging.error(f"Error getting order by symbol: {e}")
                 raise
 
         async def place_order(self, order:OrderRequest):

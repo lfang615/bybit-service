@@ -13,10 +13,13 @@
       <thead>
         <tr>
           <th>Order ID</th>
-          <th>Trading Pair</th>
-          <th>Quantity</th>
+          <th>Contract</th>
+          <th>Order Type</th>
+          <th>Side</th>
+          <th>Qty</th>
           <th>Price</th>
           <th>Status</th>
+          <th>StopOrderType</th>          
         </tr>
       </thead>
       <tbody>
@@ -25,10 +28,10 @@
           <td>{{ order.symbol }}</td>
           <td>{{ order.orderType }}</td>
           <td>{{ order.side }}</td>
-          <td>{{ order.stopOrderType }}</td>
           <td>{{ order.qty }}</td>
-          <td>{{ order.price }}</td>
+          <td>{{ order.price }}</td>                    
           <td>{{ order.orderStatus }}</td>
+          <td>{{ order.stopOrderType }}</td>
         </tr>
       </tbody>
     </table>

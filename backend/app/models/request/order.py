@@ -43,3 +43,8 @@ class RetrieveOrdersRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     orderId: str
+
+class LeverageRequest(BaseModel):
+    symbol: str
+    buyLeverage: Optional[str] = None
+    sellLeverage: Optional[str] = None

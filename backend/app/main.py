@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.websockets import WebSocketDisconnect
 from bson.json_util import dumps
 from backend.app.bybit import BybitAPI
-from backend.app.models.request.order import OrderRequest, CancelRequest
+from backend.app.models.request.order import OrderRequest, CancelRequest, LeverageRequest
 from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
 from pymongo import MongoClient
 from asyncio import Queue
+from typing import Optional
 import os
 from dotenv import load_dotenv
 import redis
@@ -54,17 +55,19 @@ async def get_open_positions_orders():
     orders_json = json.loads(dumps(orders))
     return orders_json
 
-@app.get("/listorders")
-async def get_all_orders():
-    return await api.ContractOrder(api).get_order_list()
-
-@app.get("/order/{order_id}")
-async def get_order(order_id: str):
-    response = await api.ContractOrder(api).get_order_by_id(order_id)
+@app.get("/order/")
+async def get_order(order_id: Optional[str]=None, symbol: Optional[str]=None):
+    if order_id:
+        response = await api.ContractOrder(api).get_order_by_id(order_id)
+    elif symbol:
+        response = await api.ContractOrder(api).get_order_by_symbol(symbol)
+    else:
+        return {"error": "You must provide either an order_id or a symbol"}
+    return response
     # order_data = response['result']['list'][0]
     # order_data['isPositionClosed'] = False
     # app.state.order_collection.insert_one(order_data)
-    return response
+    
     
 
 @app.get("/mongo")
@@ -101,6 +104,10 @@ async def get_position_status(symbol: str):
 # async def cancel_order(order_id: str):
 #     return await api.ContractOrder(api).cancel_order(order_id)
 
+@app.post("/set-leverage")
+async def set_leverage(leverageRequest: LeverageRequest):
+    return await api.Position(api).set_leverage(symbol, buyLeverage, sellLeverage)
+
 @app.get("/openOrders")
 async def get_open_orders():
     return await api.ContractOrder(api).get_open_orders()
@@ -112,7 +119,7 @@ async def produce_order_status_updates(app, order):
     message = json.dumps(order)
     logging.warning(f"Sending message: {message}")
     # Publish the message to the Kafka topic
-    await producer.send("order_status_updates", message)
+    await producer.send("order_status_updates", message.encode("utf-8"))
 
 
 # ----------------------------- WEBSOCKET ---------------------------------
@@ -188,12 +195,15 @@ async def consume_order_status_updates(app, consumer):
                     filter = {'orderId': order['orderId']}
                     update = {'$set': order}
                     app.state.order_collection.update_many(filter, update)
-                    # Process the updated order here and update the frontend grid
-                    await app.websocket_queue.put(order)  # Send the updated order to the WebSocket queue
+
+                    # Send the updated order to the WebSocket queue to update the UI
+                    await app.websocket_queue.put(order)  # 
                     
     finally:
         # Make sure to stop the consumer when you're done
         await consumer.stop()  
+
+
 
 # -------- STARTUP EVENTS ------------
 
