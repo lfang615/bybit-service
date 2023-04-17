@@ -162,3 +162,4 @@ cython_debug/
 frontend/package-lock.json
 frontend/package.json
 frontend/vue.config.js
+.vscode/tasks.json
