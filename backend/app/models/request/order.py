@@ -1,31 +1,45 @@
 from pydantic import BaseModel
 from typing import Optional
-from models.data.order import Order
 from enum import Enum
 
-# enum of urls 
-# class OrderType(str, Enum):
-class BybitEndpoints(Enum):
-    POSITION_INFO = "position/list"
-    SET_LEVERAGE = "position/set-leverage"
-    TP_SL = "position/set-tpsl-mode"
-    TRADE_STOP = "position/trading-stop"
     
-
-class OrderRequest(BaseModel):
+class Order(BaseModel):
+    symbol: str
+    side: str
     orderType: str
-    qty: int
-    takeProfit: Optional[float] = None
-    stopLoss: Optional[float] = None
-    triggerDirection: Optional[str] = None
-    triggerPrice: Optional[float] = None
+    qty: str
+    price: str
+    timeInForce: str
+    positionIdx: Optional[int]
+    takeProfit: Optional[str] = None
+    stopLoss: Optional[str] = None
+    orderId: str
+    lastPriceOncreated: Optional[str] = None # last price when order was created
+    createdTime: Optional[str] = None # time order was created on Bybit's server
+    updatedTime: Optional[str] = None # time order was updated on Bybit's server
+    reduceOnly: Optional[bool] = None
+    avgEntryPrice: Optional[str] = None
+    avgExitPrice: Optional[str] = None
+    closedPnL: Optional[str] = None
+    cumExecQty: Optional[str] = None
 
-    # def to_order(self):
-    #     return Order(
-    #         orderType=self.orderType,
-    #         qty=self.qty,
-    #         takeProfit=self.takeProfit,
-    #         stopLoss=self.stopLoss,
-    #         triggerDirection=self.triggerDirection,
-    #         triggerPrice=self.triggerPrice
-    #     )
+    
+class OrderRequest(BaseModel):
+    symbol: str
+    side: str
+    orderType: str
+    qty: str
+    price: str
+    timeInForce: str
+    positionIdx: Optional[int]
+    takeProfit: Optional[str] = None
+    stopLoss: Optional[str] = None
+    orderId: str = None    
+    reduceOnly: Optional[bool] = None
+
+class RetrieveOrdersRequest(BaseModel):
+    orderStatus: str
+    orderFilter: str
+
+class CancelRequest(BaseModel):
+    orderId: str
