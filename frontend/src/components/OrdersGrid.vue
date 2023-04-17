@@ -85,7 +85,6 @@ export default {
     },
 
     connect() {
-      // this.socket = new WebSocket('ws://localhost:8000/ws');
       this.socket = new WebSocket('ws://localhost:8000/ws/order_updates');
       this.socket.addEventListener('open', this.onOpen);
       this.socket.addEventListener('error', this.onError);
