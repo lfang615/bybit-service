@@ -5,10 +5,10 @@
       <div class="col">
         <ul class="nav nav-tabs">
           <li class="nav-item">
-            <a class="nav-link" :class="{ active: side == 'open'}" @click="side = 'open'" href="#">Open</a>
+            <a class="nav-link" :class="{ active: open_close == 'open'}" @click="open_close = 'open'" href="#">Open</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" :class="{ active: side == 'close'}" @click="side = 'close'" href="#">Close</a>
+            <a class="nav-link" :class="{ active: open_close == 'close'}" @click="open_close = 'close'" href="#">Close</a>
           </li>
         </ul>
       </div>
@@ -18,20 +18,33 @@
       <div class="col">
         <div class="btn-group mt-3" role="group" aria-label="Basic outlined example">
           <button type="button" class="btn btn-outline-primary"
-           :class="{ active: order_type == 'limit'}"
-           @click="order_type = 'limit'">Limit</button>
+           :class="{ active: orderType == 'Limit'}"
+           @click="orderType = 'Limit'">Limit</button>
           <button type="button" class="btn btn-outline-primary" 
-          :class="{ active: order_type == 'market'}"
-          @click="order_type = 'market'">Market</button>
+          :class="{ active: orderType == 'Market'}"
+          @click="orderType = 'Market'">Market</button>
           <button type="button" class="btn btn-outline-primary" 
-            :class="{ active: order_type == 'conditional'}"
-            @click="order_type = 'conditional'">Conditional</button>
+            :class="{ active: orderType == 'conditional'}"
+            @click="orderType = 'conditional'">Conditional</button>
         </div>    
       </div>
     </div>
 
     <div class="row mt-4">
       <div class="col">
+        <form @submit.prevent="setLeverage">
+          <div class="row mb-3">
+            <div class="col">
+              <label for="buy-leverage" class="form-label">Buy Leverage</label>
+              <input type="text" id="buy-leverage" class="form-control" v-model="buyLeverage" />
+            </div>
+          <div class="col">
+            <label for="sell-leverage" class="form-label">Sell Leverage</label>
+            <input type="text" id="sell-leverage" class="form-control" v-model="sellLeverage" />
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary mb-3">Set Leverage</button>
+    </form>
         <form @submit.prevent="submitOrder">
           <div>
             <label for="symbol" class="form-label">Symbol:</label>
@@ -39,17 +52,17 @@
           </div>
           <div>
             <label for="qty" class="form-label">Quantity:</label>
-            <input type="number" id="qty" class="form-control" v-model="qty" required />
+            <input type="text" id="qty" class="form-control" v-model="qty" required />
           </div>
           <div>
             <label for="price" class="form-label">Price:</label>
-            <input type="number" id="price" class="form-control" v-model="price" required />
+            <input type="text" step="0.000001" id="price" class="form-control" v-model="price" required />
           </div>
          
           <div>
             <label for="time_in_force" class="form-label">Time in Force:</label>
             <select id="time_in_force" class="form-select" v-model="time_in_force" required>
-              <option value="GoodTillCancel">Good Till Cancel</option>
+              <option value="GoodTillCancel" selected>Good Till Cancel</option>
               <option value="ImmediateOrCancel">Immediate or Cancel</option>
               <option value="FillOrKill">Fill or Kill</option>
             </select>
@@ -61,15 +74,18 @@
           <div v-show="tpsl">
             <div>
               <label for="take_profit" class="form-label">Take Profit:</label>
-              <input type="number" id="take_profit" class="form-control" />
+              <input type="text" step="0.000001" id="take_profit" class="form-control" v-model="take_profit"/>
             </div>
             <div>
               <label for="stop_loss" class="form-label">Stop Loss:</label>
-              <input type="number" id="stop_loss" class="form-control" />
+              <input type="text" step="0.000001" id="stop_loss" class="form-control" v-model="stop_loss" />
             </div>
           </div>
-          <div class="mt-4">
-            <button type="button" class="btn btn-primary">Submit Order</button>
+          <div class="mt-4 btn-group">
+            <button type="submit" name="btn-submitOrder" class="btn btn-success"
+              @click="side = 'Buy'">Open Long</button>
+            <button type="submit" name="btn-submitOrder" class="btn btn-danger"
+              @click="side = 'Sell'">Open Short</button>
           </div>
         </form>
       </div>
@@ -84,13 +100,18 @@
 
     data() {
       return {
+        open_close: "open",
         symbol: "",
-        side: "open",
-        order_type: "limit",
+        side: "",
+        orderType: "Limit",
         qty: "",
         price: "",
         time_in_force: "",
         tpsl: false,
+        take_profit: "",
+        stop_loss: "",
+        buyLeverage: "",
+        sellLeverage: "",
       }
     },
     props: {
@@ -100,15 +121,27 @@
       },
     },
     methods: {
+      async setLeverage() {
+        try {
+          const payload = {
+            buy_leverage: this.buyLeverage,
+            sell_leverage: this.sellLeverage,
+          };
+          await axios.post('http://localhost:8000/set-leverage', payload);
+          console.log('Leverage set successfully');
+        } catch (error) {
+          console.error('Failed to set leverage:', error);
+        }
+      },
       async submitOrder() {
         try {
           const response = await axios.post("http://localhost:8000/place_order", {
-            symbol: this.symbol,
+            symbol: this.$props.selectedSymbol,
             side: this.side,
-            order_type: this.order_type,
+            orderType: this.orderType,
             qty: this.qty,
             price: this.price,
-            time_in_force: this.time_in_force,
+            timeInForce: this.time_in_force,
           });
           console.log("Order submitted successfully:", response.data);
         } catch (error) {

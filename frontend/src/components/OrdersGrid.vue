@@ -1,9 +1,14 @@
 <template>
   <div class="table-responsive">
-    <h2>Open and Pending Orders</h2>
-    <button @click="fetchOrders">Refresh Orders</button>
-    <button @click="displayType = 'positions'">Positions</button>
-    <button @click="displayType = 'currentOrders'">Current Orders</button>
+    <div class="d-flex justify-content-between">
+      <div class="btn-group" role="group">
+        <input @click="displayType = 'positions'" type="radio" class="btn-check" name="btnradio" id="btnradio1" autocomplete="off" checked>
+        <label class="btn btn-outline-primary" for="btnradio1">Positions</label>
+        <input @click="displayType = 'currentOrders'" type="radio" class="btn-check" name="btnradio" id="btnradio2" autocomplete="off">
+        <label class="btn btn-outline-primary" for="btnradio2">Current Orders</label>
+      </div>
+      <button @click="refreshOrders" class="btn btn-outline-secondary">Refrersh Orders</button>
+  </div>
     <table class="table" v-if="displayedOrders.length">
       <thead>
         <tr>
@@ -15,12 +20,15 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="order in displayedOrders" :key="order.id">
-          <td>{{ order.id }}</td>
-          <td>{{ order.trading_pair }}</td>
-          <td>{{ order.quantity }}</td>
+        <tr v-for="order in displayedOrders" :key="order.orderId">
+          <td>{{ order.orderId }}</td>
+          <td>{{ order.symbol }}</td>
+          <td>{{ order.orderType }}</td>
+          <td>{{ order.side }}</td>
+          <td>{{ order.stopOrderType }}</td>
+          <td>{{ order.qty }}</td>
           <td>{{ order.price }}</td>
-          <td>{{ order.status }}</td>
+          <td>{{ order.orderStatus }}</td>
         </tr>
       </tbody>
     </table>
@@ -29,7 +37,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import axios from "axios";
 
 export default {
   data() {
@@ -55,25 +63,48 @@ export default {
     this.fetchOrders();
   },
   methods: {
-    async fetchOrders() {
+    async refreshOrders() {
       try {
-        const response = await axios.get('http://localhost:8000/orders');
+        const response = await axios.get('http://localhost:8000/refresh_orders');
         this.orders = response.data;
       } catch (error) {
         console.error('Failed to fetch orders:', error);
       }
     },
+
+    async fetchOrders(){
+      try {
+        const response = await axios.get('http://localhost:8000/open_positions_orders');
+        this.orders = response.data;
+      } catch (error) {
+        console.error('Failed to fetch orders:', error);
+      }
+    },
+
     connect() {
-      this.socket = new WebSocket('ws://localhost:8000/ws');
+      // this.socket = new WebSocket('ws://localhost:8000/ws');
+      this.socket = new WebSocket('ws://localhost:8000/ws/order_updates');
+      this.socket.addEventListener('open', this.onOpen);
+      this.socket.addEventListener('error', this.onError);
+      this.socket.addEventListener('close', this.onClose);
       this.socket.addEventListener('message', this.onMessage);
+    },
+    onOpen(event) {
+      console.log('WebSocket connected:', event);
     },
     onMessage(event) {
       const updatedOrder = JSON.parse(event.data);
       // Update the order in the orders array based on the received data
-      const orderIndex = this.orders.findIndex(order => order.id === updatedOrder.id);
+      const orderIndex = this.orders.findIndex(order => order.orderId === updatedOrder.orderId);
       if (orderIndex !== -1) {
         this.orders.splice(orderIndex, 1, updatedOrder);
       }
+    },
+    onError(event) {
+      console.error('WebSocket error:', event);
+    },
+    onClose(event) {
+      console.log('WebSocket closed:', event);
     },
   },
 };
