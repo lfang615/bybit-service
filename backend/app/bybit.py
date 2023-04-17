@@ -8,6 +8,11 @@ import hmac
 import uuid
 import hashlib
 from backend.app.models.request.order import Order, OrderRequest, CancelRequest
+from errorcodes import BybitErrorCodes
+import logging
+
+class BybitAPIException(Exception):
+    pass
 
 class BybitAPI:
     def __init__(self, api_key, secret_key):
@@ -35,12 +40,19 @@ class BybitAPI:
             # "cdn-request-id": "cdn_request_id"
             }
         
+
         if method == "POST":
             response = httpx.post(url, headers=headers, data=payload.json())
-            return response.json()
+            response_data = response.json()
         else:
             response = httpx.get(url + "?" + payload, headers=headers)
-            return response.json()
+            response_data = response.json()
+        
+        if 'ret_code' in response_data and response_data['ret_code'] != 0:
+            error_message = BybitErrorCodes.get_message(response_data['ret_code'])
+            raise BybitAPIException(f"Error {response_data['ret_code']}: {error_message}")
+
+        return response_data
         
     def genSignature(self, payload):
         param_str= str(time_stamp) + self.api_key + self.recv_window + payload
@@ -53,16 +65,28 @@ class BybitAPI:
             self.api = api
         
         async def get_all_positions(self):
-            endpoint = "/contract/v3/private/position/list"
-            return await self.api._send_request("GET", endpoint)
+            try:
+                endpoint = "/contract/v3/private/position/list"
+                return await self.api._send_request("GET", endpoint)
+            except BybitAPIException as e:
+                logging.error(f"Error getting all positions: {e}")
+                raise
         
         async def get_position_p_n_l(self, symbol:str):
-            endpoint = f"/contract/v3/private/position/closed-pnl"
-            return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
+            try:
+                endpoint = f"/contract/v3/private/position/closed-pnl"
+                return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
+            except BybitAPIException as e:
+                logging.error(f"Error getting position PnL: {e}")
+                raise
         
         async def get_position_status(self, symbol:str):
-            endpoint = f"/contract/v3/private/position/list"
-            return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
+            try:
+                endpoint = f"/contract/v3/private/position/list"
+                return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
+            except BybitAPIException as e:
+                logging.error(f"Error getting position status: {e}")
+                raise
 
     class ContractOrder:
         def __init__(self, api):
@@ -76,29 +100,52 @@ class BybitAPI:
                     order.positionIdx = 2
         
         async def get_open_orders(self, orderId:str):
-            endpoint = "/contract/v3/private/order/unfilled-orders"
-            return await self.api._send_request("GET", endpoint, f'orderId={orderId}')
-        
+            try:
+                endpoint = "/contract/v3/private/order/unfilled-orders"
+                return await self.api._send_request("GET", endpoint, f'orderId={orderId}')
+            except BybitAPIException as e:
+                logging.error(f"Error getting open orders: {e}")
+                raise
+
         async def get_order_list(self):
-            endpoint = "/contract/v3/private/order/list"
-            return await self.api._send_request("GET", endpoint, f'category=linear&orderFilter=order')
-        
+            try:
+                endpoint = "/contract/v3/private/order/list"
+                return await self.api._send_request("GET", endpoint, f'category=linear&orderFilter=order')
+            except BybitAPIException as e:
+                logging.error(f"Error getting order list: {e}")
+
         async def get_active_orders(self):
-            endpoint = "/contract/v3/private/order/list"
-            return await self.api._send_request("GET", endpoint, f'symbol=APEUSDT')
-        
+            try:
+                endpoint = "/contract/v3/private/order/list"
+                return await self.api._send_request("GET", endpoint, f'symbol=APEUSDT')
+            except BybitAPIException as e:
+                logging.error(f"Error getting active orders: {e}")
+                raise
+
         async def get_new_orders(self):
-            endpoint = "/contract/v3/private/order/list"
-            return await self.api._send_request("GET", endpoint, f'orderStatus=New')
+            try:
+                endpoint = "/contract/v3/private/order/list"
+                return await self.api._send_request("GET", endpoint, f'orderStatus=New')
+            except BybitAPIException as e:
+                logging.error(f"Error getting new orders: {e}")
+                raise
 
         async def get_order_by_id(self, orderId:str):
-            endpoint = "/contract/v3/private/order/list"
-            return await self.api._send_request("GET", endpoint, f'orderId={orderId}')
+            try:
+                endpoint = "/contract/v3/private/order/list"
+                return await self.api._send_request("GET", endpoint, f'orderId={orderId}')
+            except BybitAPIException as e:
+                logging.error(f"Error getting order by id: {e}")
+                raise
 
         async def place_order(self, order:OrderRequest):
-            endpoint = "/contract/v3/private/order/create"
-            self.set_position_mode(order)
-            return await self.api._send_request("POST", endpoint, order)
+            try: 
+                endpoint = "/contract/v3/private/order/create"
+                self.set_position_mode(order)
+                return await self.api._send_request("POST", endpoint, order)
+            except BybitAPIException as e:
+                logging.error(f"Error placing order: {e}")
+                raise
         
         # async def cancel_order(self, order_id:str):
         #     endpoint = "/contract/v3/private/order/cancel"
@@ -110,15 +157,20 @@ class BybitAPI:
             self.api = api
         
         def get_balance(self):
-            endpoint = "/v2/private/wallet/balance"
-            return self.api._send_request("GET", endpoint)
-        
+            try:    
+                endpoint = "/v2/private/wallet/balance"
+                return self.api._send_request("GET", endpoint)
+            except BybitAPIException as e:
+                logging.error(f"Error getting balance: {e}")
+                raise       
     class MarketData:
         def __init__(self, api):
             self.api = api
 
         def get_trading_symbols(self):
-            endpoint = f"/derivatives/v3/public/tickers?category=linear"
-            return self.api._send_request("GET", endpoint)
-
-        # Add more methods as needed...
+            try:        
+                endpoint = f"/derivatives/v3/public/tickers?category=linear"
+                return self.api._send_request("GET", endpoint)
+            except BybitAPIException as e:
+                logging.error(f"Error getting trading symbols: {e}")
+                raise
