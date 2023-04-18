@@ -94,7 +94,7 @@ async def place_order(orderRequest: OrderRequest):
     # Publish order ID to order_updates channel
     # redis_client.publish("order_updates", order_placed['result']['orderId'])
 
-    return response['result']
+    return response
 
 @app.get("/position_status/{symbol}")
 async def get_position_status(symbol: str):
@@ -104,9 +104,10 @@ async def get_position_status(symbol: str):
 # async def cancel_order(order_id: str):
 #     return await api.ContractOrder(api).cancel_order(order_id)
 
-@app.post("/set-leverage")
+@app.post("/set_leverage")
 async def set_leverage(leverageRequest: LeverageRequest):
-    return await api.Position(api).set_leverage(symbol, buyLeverage, sellLeverage)
+    response = await api.Position(api).set_leverage(leverageRequest)
+    return response
 
 @app.get("/openOrders")
 async def get_open_orders():
