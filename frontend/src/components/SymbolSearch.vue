@@ -6,9 +6,9 @@
           v-model="searchText"
           @focusin="isActive = true"
           @input="filterSymbols">
-        <button class="btn btn-outline-success" type="submit"
+        <!-- <button class="btn btn-outline-success" type="submit"
           @click="isActive = false"
-        >Select</button>
+        >Select</button> -->
         <div class="list-group search-results">
         <button
             v-for="symbol in filteredSymbols"

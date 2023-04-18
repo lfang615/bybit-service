@@ -32,6 +32,17 @@
           <td>{{ order.price }}</td>                    
           <td>{{ order.orderStatus }}</td>
           <td>{{ order.stopOrderType }}</td>
+          <td v-if="displayType === 'currentOrders'">
+            <button class="btn btn-sm btn-primary" @click.stop="editOrder(order)">Edit</button>
+          </td>
+          <td v-if="displayType === 'currentOrders'">
+            <button class="btn btn-sm btn-danger" @click.stop="cancelOrder(order)">Cancel</button>
+          </td> <td v-if="displayType === 'currentOrders'">
+            <button class="btn btn-sm btn-primary" @click.stop="editOrder(order)">Edit</button>
+          </td>
+          <td v-if="displayType === 'currentOrders'">
+            <button class="btn btn-sm btn-danger" @click.stop="cancelOrder(order)">Cancel</button>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -48,6 +59,8 @@ export default {
       socket: null,
       orders: [],
       displayType: 'positions',
+      showEditOrderModal: false,
+      selectedOrder: null,
     };
   },
   computed: {
@@ -75,6 +88,26 @@ export default {
       }
     },
 
+    editOrder(order) {
+      this.selectedOrder = order;
+      this.showEditOrderModal = true;
+    },
+
+    cancelOrder(order){
+      try{
+        const response = axios.post('http://localhost:8000/cancel_order', {
+          orderId: order.orderId,
+        });
+        if(response.data['retCode'] === 0){
+          this.showMessageModal('Order Cancel Successful', `Order ${order.orderId} has been cancelled.`);
+        } else {
+          this.showMessageModal('Order Cancel Failed', `Order ${order.orderId} could not be cancelled. Error: ${response.data['retMsg']}`);
+        }
+      } catch(error){
+        console.error('Failed to cancel order:', error);
+      }
+    },
+
     async fetchOrders(){
       try {
         const response = await axios.get('http://localhost:8000/open_positions_orders');
@@ -83,7 +116,6 @@ export default {
         console.error('Failed to fetch orders:', error);
       }
     },
-
     connect() {
       this.socket = new WebSocket('ws://localhost:8000/ws/order_updates');
       this.socket.addEventListener('open', this.onOpen);
@@ -108,6 +140,9 @@ export default {
     onClose(event) {
       console.log('WebSocket closed:', event);
     },
+    showMessageModal(messageModalTitle, messageModalMessage){
+      this.$emit('show-message-modal', {'messageModalTitle': messageModalTitle, 'messageModalMessage': messageModalMessage});
+    }
   },
 };
 </script>

@@ -1,4 +1,3 @@
-<!-- frontend/src/components/BybitOrderForm.vue -->
 <template>
   <div class="container mt-5">
     <div class="row">
@@ -45,6 +44,7 @@
       </div>
       <button type="submit" class="btn btn-primary mb-3">Set Leverage</button>
     </form>
+    <hr class="border border-primary">
         <form @submit.prevent="submitOrder">
           <div>
             <label for="symbol" class="form-label">Symbol:</label>
@@ -90,65 +90,104 @@
         </form>
       </div>
     </div>
+
+    <!-- Error Modal -->
+  <div class="modal" tabindex="-1" :class="{ 'show': showModal }" style="display: block;" v-if="showModal">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" v-if="modalType === 'success'">Success</h5>
+          <h5 class="modal-title" v-if="modalType === 'error'">Error</h5>
+          <button type="button" class="btn-close" @click="showModal = false"></button>
+        </div>
+        <div class="modal-body">
+          <p :class="{ 'text-success': modalType === 'success', 'text-danger': modalType === 'error' }">
+            {{ modalMessage }}
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showModal = false">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
   </div>
 </template>
   
-  <script>
-  import axios from "axios";
+<script>
+import axios from "axios";
   
-  export default {
-
-    data() {
-      return {
-        open_close: "open",
-        symbol: "",
-        side: "",
-        orderType: "Limit",
-        qty: "",
-        price: "",
-        time_in_force: "",
-        tpsl: false,
-        take_profit: "",
-        stop_loss: "",
-        buyLeverage: "",
-        sellLeverage: "",
+export default {
+  data() {
+    return {
+      open_close: "open",
+      symbol: "",
+      side: "",
+      orderType: "Limit",
+      qty: "",
+      price: "",
+      time_in_force: "",
+      tpsl: false,
+      take_profit: "",
+      stop_loss: "",
+      buyLeverage: "",
+      sellLeverage: "",
+      showModal: false,
+      modalType: 'error', // or 'success'
+      modalMessage: "",
+    }
+  },
+  props: {
+    selectedSymbol: {
+      type: String,
+      default: "",
+    },
+  },
+  methods: {
+    async setLeverage() {
+      try {
+        const payload = {
+          symbol: this.$props.selectedSymbol,
+          buyLeverage: this.buyLeverage,
+          sellLeverage: this.sellLeverage,
+        };
+        const response = await axios.post('http://localhost:8000/set_leverage', payload);
+        if(response.data['retCode'] === 0) {
+          this.showMessageModal('Success', 'Leverage set successfully!');
+        }else {
+          this.showMessageModal('Error', response.data['retMsg']);
+        }
+          console.log('Leverage set successfully');
+      } catch (error) {
+          this.showMessageModal('Error', error.message)
+          console.error('Failed to set leverage:', error);
       }
     },
-    props: {
-      selectedSymbol: {
-        type: String,
-        default: "",
-      },
-    },
-    methods: {
-      async setLeverage() {
-        try {
-          const payload = {
-            buyLeverage: this.buyLeverage,
-            sellLeverage: this.sellLeverage,
-          };
-          await axios.post('http://localhost:8000/set_leverage', payload);
-          console.log('Leverage set successfully');
-        } catch (error) {
-          console.error('Failed to set leverage:', error);
+    async submitOrder() {
+      try {
+        const response = await axios.post("http://localhost:8000/place_order", {
+          symbol: this.$props.selectedSymbol,
+          side: this.side,
+          orderType: this.orderType,
+          qty: this.qty,
+          price: this.price,
+          timeInForce: this.time_in_force,
+        });
+
+        if(response.data['retCode'] === 0) {
+          this.showMessageModal('Success', 'Order placed successfully!')
+        }else {
+          this.showMessageModal('Error', response.data['retMsg'])
         }
-      },
-      async submitOrder() {
-        try {
-          const response = await axios.post("http://localhost:8000/place_order", {
-            symbol: this.$props.selectedSymbol,
-            side: this.side,
-            orderType: this.orderType,
-            qty: this.qty,
-            price: this.price,
-            timeInForce: this.time_in_force,
-          });
-          console.log("Order submitted successfully:", response.data);
-        } catch (error) {
+        console.log("Order submitted successfully:", response.data);
+      } catch (error) {
+          this.showMessageModal('Error', error.message)
           console.error("Error submitting order:", error);
-        }
-      },
+      }
     },
-  };
-  </script>
-  
+    showMessageModal(messageModalTitle, messageModalMessage) {
+      this.$emit('show-message-modal', {'messageModalTitle': messageModalTitle, 'messageModalMessage': messageModalMessage})
+    },
+  },
+};
+</script>
