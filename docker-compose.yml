@@ -1,19 +1,43 @@
-version: '3.8'
+version: "3.9"
 
 services:
+  order_manager:
+    build: ./ordermanager
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+      - redis
+
+  order_state_resolver:
+    build: ./orderstateresolver
+    depends_on:
+      - kafka
+      - redis
+
+  redis:
+    image: "redis:latest"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  kafka:
+    image: "confluentinc/cp-kafka:latest"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    depends_on:
+      - zookeeper
+
   zookeeper:
-    image: confluentinc/cp-zookeeper:latest
+    image: "confluentinc/cp-zookeeper:latest"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
 
-  kafka:
-    image: confluentinc/cp-kafka:latest
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+volumes:
+  redis-data:
