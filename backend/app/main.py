@@ -70,7 +70,6 @@ async def place_order(orderRequest: OrderRequest):
     orderRequest['orderStatus'] = "Pending"   
     app.state.redis_client.hset("orders", orderRequest['orderLinkId'], json.dumps(order_data))
 
-
     # Produce a message with the new order to the kafka topic
     await produce_topic_orders_executed(app, response['result'])
     # Publish order ID to order_updates channel
@@ -153,13 +152,13 @@ async def startup_event():
     app.state.redis_client = redis.Redis(host=os.environ['REDIS_HOST'], port=os.environ['REDIS_PORT'], db=0)
     app.state.kafka_consumer = AIOKafkaConsumer(
         "order_status_updates",
-        bootstrap_servers="localhost:9092",
+        bootstrap_servers=os.environ['KAFKA_URI'],
         value_deserializer=lambda m: json.loads(m.decode('utf-8'))
     )
     await app.state.kafka_consumer.start()
     app.state.kafka_consumer_task = asyncio.create_task(consume_topic_resolved_orders(app, app.state.kafka_consumer))
 
-    app.state.kafka_producer = AIOKafkaProducer(bootstrap_servers='localhost:9092')
+    app.state.kafka_producer = AIOKafkaProducer(bootstrap_servers=os.environ['KAFKA_URI'])
     await app.state.kafka_producer.start()
 
 @app.on_event("shutdown")
