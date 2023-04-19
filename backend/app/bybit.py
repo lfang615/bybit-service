@@ -160,10 +160,13 @@ class BybitAPI:
                 logging.error(f"Error placing order: {e}")
                 raise
         
-        # async def cancel_order(self, order_id:str):
-        #     endpoint = "/contract/v3/private/order/cancel"
-        #     cancelRequest = CancelRequests(order_id)
-        #     return await self.api._send_request("POST", endpoint, cancelRequest)
+        async def cancel_order(self, cancelRequest:CancelRequest):
+            try:
+                endpoint = "/contract/v3/private/order/cancel"
+                return await self.api._send_request("POST", endpoint, cancelRequest)
+            except BybitAPIException as e:
+                logging.error(f"Error cancelling order: {e}")
+                raise
             
     class Account:
         def __init__(self, api):

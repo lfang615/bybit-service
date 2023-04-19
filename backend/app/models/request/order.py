@@ -36,13 +36,14 @@ class OrderRequest(BaseModel):
     stopLoss: Optional[str] = None
     orderId: str = None    
     reduceOnly: Optional[bool] = None
+    orderLinkId: str
 
 class RetrieveOrdersRequest(BaseModel):
     orderStatus: str
     orderFilter: str
 
 class CancelRequest(BaseModel):
-    orderId: str
+    orderLinkId: str
 
 class LeverageRequest(BaseModel):
     symbol: str
