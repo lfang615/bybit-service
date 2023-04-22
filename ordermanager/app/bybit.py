@@ -38,15 +38,16 @@ class BybitAPI:
             # "cdn-request-id": "cdn_request_id"
             }
         
-        if method == "POST":
-            response = httpx.post(url, headers=headers, data=payload.json())
-            response_data = response.json()
-        else:
-            response = httpx.get(url + "?" + payload, headers=headers)
-            response_data = response.json()
+        async with httpx.AsyncClient() as client:
+            if method == "POST":
+                response = await client.post(url, headers=headers, data=payload.json())
+                response_data = response.json()
+            else:
+                response = await client.get(url + "?" + payload, headers=headers)
+                response_data = response.json()
         
         if 'retCode' in response_data and response_data['retCode'] != 0:
-            error_message = BybitErrorCodes.get_message(response_data['retCode'])
+            error_message = response_data['retMsg'] if BybitErrorCodes.get_message(response_data['retCode']) is "Unknown error code" else BybitErrorCodes.get_message(response_data['retCode'])
             raise BybitAPIException(f"Error {response_data['retCode']}: {error_message}")
 
         return response_data
@@ -61,14 +62,6 @@ class BybitAPI:
         def __init__(self, api):
             self.api = api
         
-        async def get_all_positions(self):
-            try:
-                endpoint = "/contract/v3/private/position/list"
-                return await self.api._send_request("GET", endpoint)
-            except BybitAPIException as e:
-                logging.error(f"Error getting all positions: {e}")
-                raise
-
         async def set_leverage(self, leverageRequest:LeverageRequest):
             try:
                 endpoint = "/contract/v3/private/position/set-leverage"
@@ -85,7 +78,7 @@ class BybitAPI:
                 logging.error(f"Error getting position PnL: {e}")
                 raise
         
-        async def get_position_status(self, symbol:str):
+        async def get_position(self, symbol:str):
             try:
                 endpoint = f"/contract/v3/private/position/list"
                 return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
@@ -104,13 +97,6 @@ class BybitAPI:
                 case 'Sell':
                     order.positionIdx = 2
         
-        async def get_open_orders(self, orderId:str):
-            try:
-                endpoint = "/contract/v3/private/order/unfilled-orders"
-                return await self.api._send_request("GET", endpoint, f'orderId={orderId}')
-            except BybitAPIException as e:
-                logging.error(f"Error getting open orders: {e}")
-                raise
 
         async def get_order_list(self):
             try:
@@ -185,8 +171,8 @@ class BybitAPI:
 
         def get_trading_symbols(self):
             try:        
-                endpoint = f"/derivatives/v3/public/tickers?category=linear"
-                return self.api._send_request("GET", endpoint)
+                endpoint = f"/derivatives/v3/public/tickers"
+                return self._send_request("GET", endpoint, "category=linear")
             except BybitAPIException as e:
                 logging.error(f"Error getting trading symbols: {e}")
                 raise
