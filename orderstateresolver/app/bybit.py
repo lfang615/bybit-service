@@ -72,4 +72,12 @@ class BybitAPI:
             logging.error(f"Error getting trading symbols: {e}")
             raise
 
+    def get_risk_limits(self):
+        try:        
+            endpoint = f" /derivatives/v3/public/risk-limit/list"
+            return self._send_request("GET", endpoint)
+        except BybitAPIException as e:
+            logging.error(f"Error getting trading symbols: {e}")
+            raise
+
         
