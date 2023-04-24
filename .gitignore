@@ -163,3 +163,11 @@ frontend/package-lock.json
 frontend/package.json
 frontend/vue.config.js
 .vscode/tasks.json
+ordermanager/app/static/js/chunk-vendors.b9cb4583.js.map
+ordermanager/app/static/js/chunk-vendors.b9cb4583.js
+ordermanager/app/static/js/app.ee3340b6.js.map
+ordermanager/app/static/js/app.ee3340b6.js
+ordermanager/app/static/css/chunk-vendors.b7c0e0b0.css
+ordermanager/app/static/css/app.954b07c5.css
+ordermanager/app/static/index.html
+ordermanager/app/static/favicon.ico
