@@ -42,6 +42,13 @@ services:
     volumes:
       - redis-slave-data:/data
 
+  mongo:
+    image: "mongo:latest"
+    volumes:
+      - "mongo_data:/data/db"
+    env_file:
+      - ./configs/mongo/.env.mongo
+
   kafka:
     image: "confluentinc/cp-kafka:latest"
     ports:
