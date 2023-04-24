@@ -172,3 +172,4 @@ ordermanager/app/static/css/app.954b07c5.css
 ordermanager/app/static/index.html
 ordermanager/app/static/favicon.ico
 .devcontainer/devcontainer.json
+.devcontainer/docker-compose.yml
