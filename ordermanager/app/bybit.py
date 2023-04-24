@@ -5,7 +5,7 @@ import time
 import hmac
 import uuid
 import hashlib
-from ordermanager.app.models.request.order import Order, OrderRequest, LeverageRequest, CancelRequest
+from ordermanager.app.models.order import Order, OrderRequest, LeverageRequest, CancelRequest
 from ordermanager.app.errorcodes import BybitErrorCodes 
 import logging
 
@@ -164,15 +164,24 @@ class BybitAPI:
                 return self.api._send_request("GET", endpoint)
             except BybitAPIException as e:
                 logging.error(f"Error getting balance: {e}")
-                raise       
+                raise
+        
     class MarketData:
         def __init__(self, api):
             self.api = api
 
-        def get_trading_symbols(self):
+        async def get_trading_symbols(self):
             try:        
                 endpoint = f"/derivatives/v3/public/tickers"
-                return self._send_request("GET", endpoint, "category=linear")
+                return self.api._send_request("GET", endpoint, "category=linear")
             except BybitAPIException as e:
                 logging.error(f"Error getting trading symbols: {e}")
+                raise
+
+        async def get_risk_limits(self, symbol:str):
+            try:        
+                endpoint = f"/derivatives/v3/public/risk-limit/list"
+                return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
+            except BybitAPIException as e:
+                logging.error(f"Error getting risk limit: {e}")
                 raise

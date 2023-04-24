@@ -27,21 +27,6 @@ async def update_positions_cache(redis_client, bybit_order, reduce_only=False):
     if position_data:
         position = Position(**json.loads(position_data))
     else:
-        # position_data = {
-        #     "symbol": bybit_order.symbol,
-        #     "Buy": {
-        #         "openDate": datetime.today().strftime("%m/%d/%Y %H:%M"),
-        #         "qty": 0,
-        #         "aep": bybit_order["price"],
-        #         "linkedOrders": [bybit_order]
-        #     },
-        #     "Sell": {
-        #         "openDate": datetime.today().strftime("%m/%d/%Y %H:%M"),
-        #         "qty": 0,
-        #         "aep": bybit_order["price"],
-        #         "linkedOrders": [bybit_order]
-        #     }
-        # }
         position = Position(symbol=bybit_order.symbol,
                              side=bybit_order.side, 
                              openDate=datetime.today().strftime("%m/%d/%Y %H:%M"), 
