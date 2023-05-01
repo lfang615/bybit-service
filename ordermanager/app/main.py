@@ -8,11 +8,10 @@ from fastapi.responses import HTMLResponse
 from fastapi.exceptions import HTTPException
 from bson.json_util import dumps
 from ordermanager.app.bybit import BybitAPI, BybitAPIException
-from ordermanager.app.security import *
+from ordermanager.app.security import Security, User, UserInDB, Token, TokenData
 from ordermanager.app.models.order import *
 from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
-from asyncio import Queue
-from typing import Annotated, Optional
+from typing import Optional
 from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
@@ -24,11 +23,10 @@ import logging
 import uuid
 from jose import JWTError, jwt
 
-
 app = FastAPI()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
+symbols = []
 # Configure the static files middleware to serve files from the `/static` folder
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
@@ -59,6 +57,14 @@ security = Security()
 def generate_unique_id():
     return str(uuid.uuid4())
 
+
+# ------------------------- CUSTOM EXCEPTIONS ---------------------------------
+class InsufficientBalanceException(Exception):
+    pass
+
+class CachedDataException(Exception):
+    pass
+
 #------------------------- REST API ---------------------------------
 
 @app.get("/", response_class=HTMLResponse)
@@ -69,13 +75,15 @@ async def serve_vue_app(request: Request):
         logging.error("Error serve_vue_app, {e}")
         return HTMLResponse(status_code=404)
     
-@app.get("/risk_limits/{symbol}")
-async def get_risk_limits(symbol:str):
+@app.get("/symbols")
+async def get_symbols():
     try:
-        response = await api.MarketData(api).get_risk_limits(symbol)
-        return response
-    except (BybitAPIException, HTTPException) as e:
-        logging.error("Error get_risk_limits, {e}")
+        result = await app.state.redis.hgetall("symbols")
+
+        decoded_result = [v.decode("utf-8") for k, v in result.items()]
+        return decoded_result
+    except (BybitAPIException, HTTPException, Exception) as e:
+        logging.error("Error get_symbols, {e}")
         return {"error": str(e)}
 
 @app.get("/order/")
@@ -95,7 +103,7 @@ async def get_order(order_id: Optional[str]=None, symbol: Optional[str]=None):
 @app.get("/orders")
 async def get_orders():
     try:
-        orders_data = await app.state.redis_client.get("orders")
+        orders_data = await get_cache_value("orders")
         if orders_data:
             orders = json.loads(orders_data)
             filtered_orders = [order for order in orders if order["orderStatus"] not in ["Cancelled", "Deactivated"]]
@@ -109,7 +117,7 @@ async def get_orders():
 @app.get("/positions")
 async def get_positions():
     try:
-        positions_data = await app.state.redis_client.get("positions")
+        positions_data = await get_cache_value("positions")
         if positions_data:
             positions = json.loads(positions_data)
             filtered_positions = [
@@ -122,24 +130,59 @@ async def get_positions():
     except Exception as e:
         logging.error("Error get_positions, {e}")
         return {"error": str(e)}
+    
+@app.get("/risk_limits/{symbol}")
+async def get_risk_limits(symbol:str) -> RiskLimit:
+    try:
+        risk_limits_data = await app.state.redis.get(f"risk_limits:{symbol}")
+        if risk_limits_data:
+            risk_limits = RiskLimit(**json.loads(risk_limits_data))
+            return risk_limits
+        else:
+            raise CachedDataException("No cached data for risk limits")
+    except Exception as e:
+        logging.error("Error get_risk_limits, {e}")
+        return {"error": str(e)}
+    
 
 @app.post("/place_order")
-async def place_order(orderRequest: OrderRequest):
+async def place_order(order_request: OrderRequest,
+                      current_user: User = Depends(security.get_current_user)):
     try:
-        orderRequest['orderLinkId'] = generate_unique_id()
-        
-        response = await api.ContractOrder(api).place_order(orderRequest)
-        
+        order_request.orderLinkId = generate_unique_id()
+
+        # Get the relevant RiskLimits item
+        risk_limit = await get_cache_value(f"risk_limits:{order_request.symbol}")
+        print("risk_limit:", risk_limit, "type:", type(risk_limit))
+        if not risk_limit:
+            raise Exception(f"No RiskLimits found for symbol {order_request.symbol}")
+
+        max_leverage = risk_limit.maxLeverage
+        order_cost = calculate_order_cost(order_request, max_leverage)
+        wallet_balance = await get_cache_value("wallet_balance")
+
+        if order_cost > wallet_balance.availableBalance:
+            raise InsufficientBalanceException(f"Insufficient balance: Required {order_cost}, available {wallet_balance.availableBalance}")
+
+        response = await api.ContractOrder(api).place_order(order_request)
+
         if response['retCode'] == 0:
-            orderRequest['orderId'] = response['result']['orderId']
-            orderRequest['orderStatus'] = "Pending"
-            order_data = orderRequest.dict()
-            order_data = Order(**order_data)       
+            order_data = {"orderStatus": "Submitted", "orderId": response["result"]["orderId"], }
+            order_data.update(order_request.dict())
+            order_data = Order(**order_data)
+            
+            # Update WalletBalance
+            wallet_balance.positionBalance += order_cost
+            wallet_balance.availableBalance -= order_cost
+            wallet_balance.walletBalance -= order_cost
+            await update_wallet_balance(wallet_balance) 
+
             await produce_topic_orders_executed(app, order_data)
-        
+
         return response
-    except (BybitAPIException, Exception) as e:
-        logging.error("Error place_order, {e}")
+
+    except (BybitAPIException, InsufficientBalanceException, Exception) as e:
+        logging.error(f"Error place_order, {e.__class__.__name__}: {e}")
         return {"error": str(e)}
     
 @app.post("/cancel_order/{order_id}")
@@ -163,54 +206,90 @@ async def set_leverage(leverageRequest: LeverageRequest):
 async def set_wallet_balance(walletBalanceRequest: WalletBalanceRequest):
     try:
         wallet_balance_key = "wallet_balance"
-        wallet_balance_data = app.state.redis_client.get(wallet_balance_key)
+        wallet_balance_data = await get_cache_value(wallet_balance_key)
         
         wallet_balance = WalletBalance(**json.loads(wallet_balance_data))
         wallet_balance['walletBalance'] = walletBalanceRequest['wallet_balance']
-        app.state.redis_client.set(wallet_balance_key, json.dumps(wallet_balance.dict()))
+        set_cache_value(wallet_balance_key, json.dumps(wallet_balance.dict()))
         
     except (HTTPException) as e:
         logging.error("Error set_wallet_balance, {e}")
         return {"error": str(e)}
     
+# ------------------------UTILITY FUNCTIONS -----------------------------
+def calculate_order_cost(order_request: OrderRequest, max_leverage: str) -> float:
+    price = float(order_request.price)
+    qty = float(order_request.qty)
+    max_leverage = float(max_leverage)
+
+    initial_margin = (price * qty) / max_leverage
+    fee_to_open_position = qty * price * 0.0006
+
+    if order_request.side == "Buy":
+        bankruptcy_price = (price * qty) * (1 - (1 / max_leverage))
+    elif order_request.side == "Sell":
+        bankruptcy_price = (price * qty) * (1 + (1 / max_leverage))
+
+    fee_to_close_position = qty * bankruptcy_price * 0.0006
+
+    return initial_margin + fee_to_open_position + fee_to_close_position
+
+async def update_wallet_balance(wallet_balance: WalletBalance):
+    try:
+        wallet_balance_key = "wallet_balance"
+        set_cache_value(wallet_balance_key, json.dumps(wallet_balance.dict()))
+    except Exception as e:
+        logging.error(f"Error update_wallet_balance, {e}")
+        raise e
+    
+async def get_wallet_balance() -> WalletBalance:
+    try:
+        wallet_balance_data = await get_cache_value("wallet_balance")
+        if wallet_balance_data:
+            wallet_balance = WalletBalance(**json.loads(wallet_balance_data))
+            return wallet_balance
+        else:
+            return WalletBalance()
+    except Exception as e:
+        logging.error("Error get_wallet_balance, {e}")
+        return {"error": str(e)}
+
+async def get_cache_value(key: str):
+    try:        
+        data = await app.state.redis.get(key)
+        if data:
+            return data
+        else:
+            return None
+    except Exception as e:
+        logging.error(f"Error get_from_redis_cache, {e}")
+        raise e
+    
+async def set_cache_value(key: str, data: dict):
+    try:        
+        await app.state.redis.set(key, json.dumps(data))
+    except Exception as e:
+        logging.error(f"Error set_cache_value, {e}")
+        raise e
+    
+    
 # ----------------------------- Authentication ---------------------------------
 
 @app.post("/token", response_model=Token)
-async def login_for_access_token(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
-):
-    user = security.authenticate_user(form_data.username, form_data.password)
+async def login_for_access_token():
+    form_data: OAuth2PasswordRequestForm = Depends()
+    user = Security().authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=os.environ['ACCESS_TOKEN_EXPIRE_MINUTES'])
+    access_token_expires = security.timedelta(minutes=os.environ['ACCESS_TOKEN_EXPIRE_MINUTES'])
     access_token = security.create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
-
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        security = Security()
-        payload = jwt.decode(token, os.environ['SECRET_KEY'], algorithms=[os.environ['ALGORITHM']])
-        username: str = payload.get("sub")
-        if username is None:
-            raise 
-        token_data = TokenData(username=username)
-    except JWTError:
-        raise credentials_exception
-    user = security.get_user(token_data.username)
-    if user is None:
-        raise credentials_exception
-    return user
 
 # ----------------------------- WEBSOCKET Connections for frontend updates  ---------------------------------
 @app.websocket("/ws/orders")
@@ -308,7 +387,7 @@ async def consume_topic_positions_updated(consumer):
 class AppState:
     def __init__(self):
         self.kafka_producer = None
-        self.redis_client = None
+        self.redis = None
         self.kafka_consumer_orders = None
         self.kafka_consumer_positions = None
         self.kafka_consume_orders_task = None
@@ -319,8 +398,9 @@ async def startup_event():
     try:
         logging.warning("Application startup event")
         app.state = AppState()
-        app.state.redis_client = redis.Redis(host=os.environ['REDIS_HOST'], port=os.environ['REDIS_PORT'], db=0)
-
+        
+        app.state.redis = redis.Redis(host=os.environ['REDIS_HOST'], port=os.environ['REDIS_PORT'], db=0)
+        
         # Create Kafka producer
         app.state.kafka_producer = AIOKafkaProducer(bootstrap_servers=os.environ['KAFKA_URI'])
         await app.state.kafka_producer.start()
@@ -341,6 +421,7 @@ async def startup_event():
         
         app.state.kafka_consume_orders_task = asyncio.create_task(consume_topic_orders_resolved(app.state.kafka_consumer_orders))
         app.state.kafka_consume_positions_task = asyncio.create_task(consume_topic_positions_updated(app.state.kafka_consumer_positions))
+
     except Exception as e:
         logging.error("Error during startup event, shutting down: %s", str(e))
         await shutdown_event()
@@ -349,7 +430,9 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     logging.warning("Application shutdown event")
-    
+    if app.state.redis is not None:
+        await app.state.redis.close()        
+
      # Stop the Kafka producer
     if app.state.kafka_producer is not None:
         await app.state.kafka_producer.stop()

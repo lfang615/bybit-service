@@ -8,6 +8,7 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
+load_dotenv()
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -21,8 +22,8 @@ class User(BaseModel):
 class UserInDB(User):
     hashed_password: str
 
-MONGO_URL = os.environ["MONGO_URL"]
-client = MongoClient(MONGO_URL)
+MONGO_URI = os.environ["MONGO_URI"]
+client = MongoClient(MONGO_URI)
 
 db = client["ordermanager"]
 users_collection = db["users"]
@@ -36,6 +37,11 @@ class Security:
     ACCESS_TOKEN_EXPIRE_MINUTES = 43200 # 30 days
 
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+    def get_user_in_db(self, username: str):
+        user = users_collection.find_one({"username": username})
+        if user:
+            return UserInDB(**user)
 
     def verify_password(self, plain_password, hashed_password):
         return self.pwd_context.verify(plain_password, hashed_password)
@@ -69,4 +75,23 @@ class Security:
             raise HTTPException(status_code=401, detail="Invalid authentication credentials")
         token_data = TokenData(username=username)
         return token_data
+    
+    async def get_current_user(self, token: str = Depends(oauth2_scheme)):
+        credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+        try:
+            payload = jwt.decode(token, os.environ['SECRET_KEY'], algorithms=[os.environ['ALGORITHM']])
+            username: str = payload.get("sub")
+            if username is None:
+                raise 
+            token_data = TokenData(username=username)
+        except JWTError:
+            raise credentials_exception
+        user_db = self.get_user_in_db(token_data.username)
+        if user_db is None:
+            raise credentials_exception
+        return User(**user_db)
     
