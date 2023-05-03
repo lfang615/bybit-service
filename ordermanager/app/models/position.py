@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
-from app.models.order import Order
+from ordermanager.app.models.order import Order
 
 class Position(BaseModel):
     symbol: str
