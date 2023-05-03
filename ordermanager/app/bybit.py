@@ -1,9 +1,6 @@
-import base64
 import httpx
-import json
 import time
 import hmac
-import uuid
 import hashlib
 from ordermanager.app.models.order import Order, OrderRequest, LeverageRequest, CancelRequest
 from ordermanager.app.errorcodes import BybitErrorCodes 
@@ -38,17 +35,21 @@ class BybitAPI:
             # "cdn-request-id": "cdn_request_id"
             }
         
-        async with httpx.AsyncClient() as client:
-            if method == "POST":
-                response = await client.post(url, headers=headers, data=payload.json())
-                response_data = response.json()
-            else:
-                response = await client.get(url + "?" + payload, headers=headers)
-                response_data = response.json()
+        try:
+            async with httpx.AsyncClient() as client:
+                if method == "POST":
+                    response = await client.post(url, headers=headers, data=payload.json())
+                    response_data = response.json()
+                else:
+                    response = await client.get(url + "?" + payload, headers=headers)
+                    response_data = response.json()
+        except httpx.HTTPError as e:
+            logging.error(f"Error sending request: {e}")
+            raise
         
         if 'retCode' in response_data and response_data['retCode'] != 0:
-            error_message = response_data['retMsg'] if BybitErrorCodes.get_message(response_data['retCode']) is "Unknown error code" else BybitErrorCodes.get_message(response_data['retCode'])
-            raise BybitAPIException(f"Error {response_data['retCode']}: {error_message}")
+                error_message = BybitErrorCodes.get_message(response_data['retCode'])
+                raise BybitAPIException(f"Error {response_data['retCode']}: {error_message}")
 
         return response_data
         
@@ -66,7 +67,7 @@ class BybitAPI:
             try:
                 endpoint = "/contract/v3/private/position/set-leverage"
                 return await self.api._send_request("POST", endpoint, leverageRequest)
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error setting leverage: {e}")
                 raise
         
@@ -74,7 +75,7 @@ class BybitAPI:
             try:
                 endpoint = f"/contract/v3/private/position/closed-pnl"
                 return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting position PnL: {e}")
                 raise
         
@@ -82,7 +83,7 @@ class BybitAPI:
             try:
                 endpoint = f"/contract/v3/private/position/list"
                 return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting position status: {e}")
                 raise
 
@@ -102,14 +103,14 @@ class BybitAPI:
             try:
                 endpoint = "/contract/v3/private/order/list"
                 return await self.api._send_request("GET", endpoint, f'category=linear&orderFilter=order')
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting order list: {e}")
 
         async def get_active_orders(self):
             try:
                 endpoint = "/contract/v3/private/order/list"
                 return await self.api._send_request("GET", endpoint, f'symbol=APEUSDT')
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting active orders: {e}")
                 raise
 
@@ -117,7 +118,7 @@ class BybitAPI:
             try:
                 endpoint = "/contract/v3/private/order/list"
                 return await self.api._send_request("GET", endpoint, f'orderStatus=New')
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting new orders: {e}")
                 raise
 
@@ -125,7 +126,7 @@ class BybitAPI:
             try:
                 endpoint = "/contract/v3/private/order/list"
                 return await self.api._send_request("GET", endpoint, f'orderId={orderId}')
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting order by id: {e}")
                 raise
 
@@ -133,7 +134,7 @@ class BybitAPI:
             try:
                 endpoint = "/contract/v3/private/order/list"
                 return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting order by symbol: {e}")
                 raise
 
@@ -142,7 +143,7 @@ class BybitAPI:
                 endpoint = "/contract/v3/private/order/create"
                 self.set_position_mode(order)
                 return await self.api._send_request("POST", endpoint, order)
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error placing order: {e}")
                 raise
         
@@ -150,7 +151,7 @@ class BybitAPI:
             try:
                 endpoint = "/contract/v3/private/order/cancel"
                 return await self.api._send_request("POST", endpoint, cancelRequest)
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error cancelling order: {e}")
                 raise
             
@@ -162,7 +163,7 @@ class BybitAPI:
             try:    
                 endpoint = "/v2/private/wallet/balance"
                 return self.api._send_request("GET", endpoint)
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting balance: {e}")
                 raise
         
@@ -174,7 +175,7 @@ class BybitAPI:
             try:        
                 endpoint = f"/derivatives/v3/public/tickers"
                 return self.api._send_request("GET", endpoint, "category=linear")
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting trading symbols: {e}")
                 raise
 
@@ -182,6 +183,6 @@ class BybitAPI:
             try:        
                 endpoint = f"/derivatives/v3/public/risk-limit/list"
                 return await self.api._send_request("GET", endpoint, f'symbol={symbol}')
-            except BybitAPIException as e:
+            except (httpx.HTTPError, BybitAPIException) as e:
                 logging.error(f"Error getting risk limit: {e}")
                 raise

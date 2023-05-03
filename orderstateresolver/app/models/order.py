@@ -78,3 +78,37 @@ class Order(BaseModel):
         elif isinstance(value, str) and value.lower() == "false":
             return False
         return bool(value)
+    
+    def __eq__(self, other):
+        if not isinstance(other, Order):
+            return NotImplemented
+        return (self.symbol == other.symbol and
+                self.side == other.side and
+                self.orderType == other.orderType and
+                self.price == other.price and
+                self.qty == other.qty and
+                self.orderLinkId == other.orderLinkId and
+                self.orderId == other.orderId and
+                self.timeInForce == other.timeInForce and
+                self.orderStatus == other.orderStatus and
+                self.positionIdx == other.positionIdx and
+                self.triggerBy == other.triggerBy and
+                self.stopOrderType == other.stopOrderType and
+                self.takeProfit == other.takeProfit and
+                self.stopLoss == other.stopLoss and
+                self.tpTriggerBy == other.tpTriggerBy and
+                self.slTriggerBy == other.slTriggerBy and
+                self.triggerPrice == other.triggerPrice and
+                self.cancelType == other.cancelType and
+                self.reduceOnly == other.reduceOnly and
+                self.leavesQty == other.leavesQty and
+                self.leavesValue == other.leavesValue and
+                self.cumExecQty == other.cumExecQty and
+                self.cumExecValue == other.cumExecValue and
+                self.cumExecFee == other.cumExecFee and
+                self.lastPriceOncreated == other.lastPriceOncreated and
+                self.rejectReason == other.rejectReason and
+                self.triggerDirection == other.triggerDirection and
+                self.closeOnTrigger == other.closeOnTrigger and
+                self.cancelType == other.cancelType and
+                self.iv == other.iv)

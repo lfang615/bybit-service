@@ -127,4 +127,4 @@ async def test_place_order_insufficient_balance(jwt_token):
         patch("ordermanager.app.main.get_wallet_balance", return_value=starting_wallet_balance), \
         patch("ordermanager.app.main.update_wallet_balance", return_value=None):        
             error_message = await place_order(order_request, jwt_token)
-            assert error_message == "error: Insufficient balance: Required 6681.25, available 3000.0"
+            assert error_message == {'error': 'Insufficient balance: Required 6681.25, available 3000.0'}

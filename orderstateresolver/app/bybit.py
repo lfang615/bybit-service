@@ -37,12 +37,16 @@ class BybitAPI:
             # "cdn-request-id": "cdn_request_id"
             }
         
-        if method == "POST":
-            response = httpx.post(url, headers=headers, data=payload.json())
-            response_data = response.json()
-        else:
-            response = httpx.get(url + "?" + payload, headers=headers)
-            response_data = response.json()
+        try:
+            if method == "POST":
+                response = httpx.post(url, headers=headers, data=payload.json())
+                response_data = response.json()
+            else:
+                response = httpx.get(url + "?" + payload, headers=headers)
+                response_data = response.json()
+        except httpx.HTTPError as e:
+            logging.error(f"Error sending request: {e}")
+            raise
         
         if 'retCode' in response_data and response_data['retCode'] != 0:
             error_message = BybitErrorCodes.get_message(response_data['retCode'])
@@ -60,7 +64,7 @@ class BybitAPI:
         try:
             endpoint = "/contract/v3/private/order/list"
             return await self._send_request("GET", endpoint, f'orderLinkId={orderLinkId}')
-        except BybitAPIException as e:
+        except (httpx.HTTPError, BybitAPIException) as e:
             logging.error(f"Error getting order by id: {e}")
             raise
 
@@ -68,16 +72,16 @@ class BybitAPI:
         try:        
             endpoint = f"/derivatives/v3/public/tickers"
             return self._send_request("GET", endpoint, "category=linear")
-        except BybitAPIException as e:
+        except (httpx.HTTPError, BybitAPIException) as e:
             logging.error(f"Error getting trading symbols: {e}")
             raise
 
     def get_risk_limits(self):
         try:        
-            endpoint = f" /derivatives/v3/public/risk-limit/list"
+            endpoint = f"/derivatives/v3/public/risk-limit/list"
             return self._send_request("GET", endpoint)
-        except BybitAPIException as e:
-            logging.error(f"Error getting trading symbols: {e}")
+        except (httpx.HTTPError, BybitAPIException) as e:
+            logging.error(f"Error getting risk limits: {e}")
             raise
 
         
