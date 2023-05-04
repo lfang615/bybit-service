@@ -70,6 +70,61 @@ class Order(BaseModel):
     cancelType: Optional[str]
     iv: Optional[str] # Implied Volatility
 
+    def __eq__(self, other):
+        if isinstance(other, Order):
+            return (
+                self.symbol == other.symbol
+                and self.side == other.side
+                and self.orderType == other.orderType
+                and self.price == other.price
+                and self.qty == other.qty
+                and self.orderLinkId == other.orderLinkId
+                and self.orderId == other.orderId
+                and self.timeInForce == other.timeInForce
+                and self.orderStatus == other.orderStatus
+                and self.positionIdx == other.positionIdx
+                and self.triggerBy == other.triggerBy
+                and self.stopOrderType == other.stopOrderType
+                and self.takeProfit == other.takeProfit
+                and self.stopLoss == other.stopLoss
+                and self.tpTriggerBy == other.tpTriggerBy
+                and self.slTriggerBy == other.slTriggerBy
+                and self.triggerPrice == other.triggerPrice
+                and self.cancelType == other.cancelType
+                and self.reduceOnly == other.reduceOnly
+                and self.leavesQty == other.leavesQty
+                and self.leavesValue == other.leavesValue
+                and self.cumExecQty == other.cumExecQty
+                and self.cumExecValue == other.cumExecValue
+                and self.cumExecFee == other.cumExecFee
+                and self.lastPriceOncreated == other.lastPriceOncreated
+                and self.rejectReason == other.rejectReason
+                and self.triggerDirection == other.triggerDirection
+                and self.closeOnTrigger == other.closeOnTrigger
+                and self.cancelType == other.cancelType
+                and self.iv == other.iv
+            )
+        
+    def __repr__(self):
+        return (
+            f"Order(symbol={self.symbol}, side={self.side}, orderType={self.orderType}, "
+            f"price={self.price}, qty={self.qty}, orderLinkId={self.orderLinkId}, "
+            f"orderId={self.orderId}, timeInForce={self.timeInForce}, "
+            f"orderStatus={self.orderStatus}, positionIdx={self.positionIdx}, " 
+            f"triggerBy={self.triggerBy}, stopOrderType={self.stopOrderType},"
+            f"takeProfit={self.takeProfit}, stopLoss={self.stopLoss}, "
+            f"tpTriggerBy={self.tpTriggerBy}, slTriggerBy={self.slTriggerBy}, "
+            f"triggerPrice={self.triggerPrice}, cancelType={self.cancelType}, "
+            f"reduceOnly={self.reduceOnly}, leavesQty={self.leavesQty}, "
+            f"leavesValue={self.leavesValue}, cumExecQty={self.cumExecQty}, "
+            f"cumExecValue={self.cumExecValue}, cumExecFee={self.cumExecFee}, "
+            f"lastPriceOncreated={self.lastPriceOncreated}, "
+            f"rejectReason={self.rejectReason}, "
+            f"triggerDirection={self.triggerDirection}, "
+            f"closeOnTrigger={self.closeOnTrigger}, "
+            f"cancelType={self.cancelType}, iv={self.iv})"
+        )
+
     @validator("reduceOnly", pre=False)
     def str_to_bool(cls, value):
         if isinstance(value, str) and value.lower() == "true":
@@ -117,14 +172,16 @@ class LeverageRequest(BaseModel):
     sellLeverage: Optional[str] = None
 
 class WalletBalanceRequest(BaseModel):
-    walletBallance: float
+    depositAmt: Optional[float]
+    withdrawAmt: Optional[float]
+    currency: str = "USDT"
     
-
 class WalletBalance(BaseModel):
     walletBalance: float
     positionBalance: float
     availableBalance: float
-
+    currency: str = "USDT"
+    
 class RiskLimit(BaseModel):
     id: str
     symbol: str

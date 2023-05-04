@@ -25,7 +25,7 @@ async def bybit_api_wrapper(api_function, *args, **kwargs):
     return await api_function(*args, **kwargs)
 
 
-async def update_positions_cache(bybit_order:Order):
+async def update_positions_cache(bybit_order:Order) -> Position:
     positions_key = get_position_cache_key(bybit_order)
     logging.log(logging.INFO, f"Begin Updating positions cache for {positions_key}")
     position_data = await get_cache_value(positions_key)
@@ -58,7 +58,7 @@ async def update_positions_cache(bybit_order:Order):
     return position
 
 
-def get_position_cache_key(bybit_order:Order):
+def get_position_cache_key(bybit_order:Order) -> str:
     if bybit_order.reduceOnly and bybit_order.side == OrderSide.SELL.value:
         return f"positions:{bybit_order.symbol}:{OrderSide.BUY.value}"
     elif bybit_order.reduceOnly and bybit_order.side == OrderSide.BUY.value:
@@ -67,7 +67,7 @@ def get_position_cache_key(bybit_order:Order):
         return f"positions:{bybit_order.symbol}:{bybit_order.side}"
 
 
-def calculate_position_totals(position:Position, bybit_order:Order):
+def calculate_position_totals(position:Position, bybit_order:Order) -> None:
     # AEP (Average Entry Price) = (Sum of price of each linked order) / (Number of linked orders)
     # Qty = (Sum of cumExecQty of each linked order)
     # If orderLinkId is already in the list of linked orders, replace the order with the updated order and calculate
@@ -91,13 +91,13 @@ def calculate_position_totals(position:Position, bybit_order:Order):
                 position.qty = calculate_position_qty(position)
 
 
-def calculate_position_qty(position:Position):
+def calculate_position_qty(position:Position) -> float:
     p_increasing_qty = sum(o.cumExecQty for o in position.linkedOrders if o.reduceOnly is False)
     p_deacreasing_qty = sum(o.cumExecQty for o in position.linkedOrders if o.reduceOnly is True)
     return p_increasing_qty - p_deacreasing_qty
 
 
-async def process_order_updates(order:Order):
+async def process_order_updates(order:Order) -> None:
     logging.warning("check_order_status started")
     order_link_id = order["orderLinkId"]
 
@@ -135,7 +135,7 @@ async def process_order_updates(order:Order):
 # ------------------------ Kafa Producers ------------------------
 @retry_decorator
 @kafka_circuit_breaker
-async def send_order_resolved_message(order:Order):
+async def send_order_resolved_message(order:Order) -> None:
     try:
         await app.state.kafka_producer.send("orders_resolved", key=order.orderLinkId.encode(), value=json.dumps(order).encode())
         logging.log(logging.WARNING, f"Sent order resolved message: {order.orderLinkId}")
@@ -144,7 +144,7 @@ async def send_order_resolved_message(order:Order):
 
 @retry_decorator
 @kafka_circuit_breaker
-async def send_position_updated_message(position:Position):
+async def send_position_updated_message(position:Position) -> None:
     try:
         message_key = f"{position.symbol}:{position.side}".encode()
         await app.state.kafka_producer.send("position_updated", key=message_key, value=json.dumps(position).encode())
@@ -154,7 +154,7 @@ async def send_position_updated_message(position:Position):
 
 @retry_decorator
 @kafka_circuit_breaker
-async def send_position_closed_message(position:Position):
+async def send_position_closed_message(position:Position) -> None:
     try:
         message_key = f"{position.symbol}:{position.side}".encode()
         await app.state.kafka_producer.send("position_closed", key=message_key, value=json.dumps(position).encode())
@@ -165,7 +165,7 @@ async def send_position_closed_message(position:Position):
 # ---------------------------------------------------------------------------------
 
 # ------------------------ Kafa Consumers -----------------------------------------
-async def consume_orders_executed(consumer):
+async def consume_orders_executed(consumer) -> None:
     try:
         async for msg in consumer:
             order = msg.value
@@ -179,7 +179,7 @@ async def consume_orders_executed(consumer):
 
 
 # ------------------Background task to update the symbols cache ------------------
-async def update_symbols_cache():
+async def update_symbols_cache() -> bool:
     try:
         logging.log(logging.WARNING, f"Begin Updating symbols cache")
         response = await bybit_client.get_trading_symbols()
@@ -197,7 +197,7 @@ async def update_symbols_cache():
         logging.log(logging.ERROR, f"Error updating symbols cache: {e}")
         return False
 
-async def symbols_updater_task():
+async def symbols_updater_task() -> None:
     while True:
         update_successful = await update_symbols_cache()
         if update_successful:
@@ -206,7 +206,7 @@ async def symbols_updater_task():
             await asyncio.sleep(60)  # Sleep for a minute before retrying
     
 # ------------------Background task to update the risk limits cache ------------------
-async def update_risk_limits_cache():
+async def update_risk_limits_cache() -> bool:
     try:
         logging.log(logging.WARNING, f"Begin Updating risk limits cache")
         response = await bybit_client.get_risk_limits()
@@ -224,7 +224,7 @@ async def update_risk_limits_cache():
         logging.log(logging.ERROR, f"Error updating risk limits cache: {e}")
         return False
     
-async def risk_limits_updater_task():
+async def risk_limits_updater_task() -> None:
     while True:
         update_successful = await update_risk_limits_cache()
         if update_successful:
@@ -235,7 +235,7 @@ async def risk_limits_updater_task():
 # ---------------------------------------------------------------------------------------------
 @retry_decorator
 @redis_circuit_breaker
-async def delete_cache_value(key: str):
+async def delete_cache_value(key: str) -> None:
     try:        
         await app.state.redis_client.delete(key)
     except Exception as e:
@@ -244,7 +244,7 @@ async def delete_cache_value(key: str):
 
 @retry_decorator
 @redis_circuit_breaker
-async def get_cache_value(key: str):
+async def get_cache_value(key: str) -> dict:
     try:        
         data = await app.state.redis_client.get(key)
         if data:
@@ -257,7 +257,7 @@ async def get_cache_value(key: str):
 
 @retry_decorator
 @redis_circuit_breaker    
-async def set_cache_value(key: str, data: dict):
+async def set_cache_value(key: str, data: dict) -> None:
     try:        
         await app.state.redis_client.set(key, json.dumps(data))
     except Exception as e:

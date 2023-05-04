@@ -92,7 +92,7 @@ async def get_order(order_id: Optional[str]=None, symbol: Optional[str]=None):
         if order_id:
             response = await api.ContractOrder(api).get_order_by_id(order_id)
         elif symbol:
-            response = await api.ContractOrder(api).get_order_by_symbol(symbol)
+            response = await api.ContractOrder(api).get_order_by_symbol(symbol) 
         else:
             return {"error": "You must provide either an orderId or a symbol"}
         return response
@@ -130,20 +130,7 @@ async def get_positions():
     except Exception as e:
         logging.error("Error get_positions, {e}")
         return {"error": str(e)}
-    
-@app.get("/risk_limits/{symbol}")
-async def get_risk_limits(symbol:str) -> RiskLimit:
-    try:
-        risk_limits_data = await app.state.redis.get(f"risk_limits:{symbol}")
-        if risk_limits_data:
-            risk_limits = RiskLimit(**json.loads(risk_limits_data))
-            return risk_limits
-        else:
-            raise CachedDataException("No cached data for risk limits")
-    except Exception as e:
-        logging.error("Error get_risk_limits, {e}")
-        return {"error": str(e)}
-    
+        
 
 @app.post("/place_order")
 async def place_order(order_request: OrderRequest,
@@ -152,14 +139,14 @@ async def place_order(order_request: OrderRequest,
         order_request.orderLinkId = generate_unique_id()
 
         # Get the relevant RiskLimits item
-        risk_limit = await get_cache_value(f"risk_limits:{order_request.symbol}")
-        print("risk_limit:", risk_limit, "type:", type(risk_limit))
+        risk_limit = await get_risk_limits_for_symbol(order_request.symbol)
+
         if not risk_limit:
             raise Exception(f"No RiskLimits found for symbol {order_request.symbol}")
 
         max_leverage = risk_limit.maxLeverage
         order_cost = calculate_order_cost(order_request, max_leverage)
-        wallet_balance = await get_cache_value("wallet_balance")
+        wallet_balance = await get_wallet_balance("wallet_balance")
 
         if order_cost > wallet_balance.availableBalance:
             raise InsufficientBalanceException(f"Insufficient balance: Required {order_cost}, available {wallet_balance.availableBalance}")
@@ -167,7 +154,7 @@ async def place_order(order_request: OrderRequest,
         response = await api.ContractOrder(api).place_order(order_request)
 
         if response['retCode'] == 0:
-            order_data = {"orderStatus": "Submitted", "orderId": response["result"]["orderId"], }
+            order_data = {"orderStatus": OrderStatus.PENDING.value, "orderId": response["result"]["orderId"], }
             order_data.update(order_request.dict())
             order_data = Order(**order_data)
             
@@ -177,7 +164,7 @@ async def place_order(order_request: OrderRequest,
             wallet_balance.walletBalance -= order_cost
             await update_wallet_balance(wallet_balance) 
 
-            await produce_topic_orders_executed(app, order_data)
+            await produce_topic_orders_executed(order_data)
 
         return response
 
@@ -203,16 +190,27 @@ async def set_leverage(leverageRequest: LeverageRequest):
         return {"error": str(e)}
     
 @app.post("/set_wallet_balance")
-async def set_wallet_balance(walletBalanceRequest: WalletBalanceRequest):
+async def set_wallet_balance(walletBalanceRequest: WalletBalanceRequest,
+                             current_user: User = Depends(security.get_current_user)):
     try:
         wallet_balance_key = "wallet_balance"
-        wallet_balance_data = await get_cache_value(wallet_balance_key)
+        wallet_balance_cache = await get_cache_value(wallet_balance_key)
+        if wallet_balance_cache:
+            wallet_balance = WalletBalance(**json.loads(wallet_balance_cache))
+        else:
+            raise CachedDataException("No wallet balance found")
         
-        wallet_balance = WalletBalance(**json.loads(wallet_balance_data))
-        wallet_balance['walletBalance'] = walletBalanceRequest['wallet_balance']
-        set_cache_value(wallet_balance_key, json.dumps(wallet_balance.dict()))
+        if walletBalanceRequest.depositAmt is not None:
+            wallet_balance.availableBalance += walletBalanceRequest.depositAmt
+            wallet_balance.walletBalance += walletBalanceRequest.depositAmt
+        if walletBalanceRequest.withdrawAmt is not None:
+            wallet_balance.availableBalance -= walletBalanceRequest.withdrawAmt
+            wallet_balance.walletBalance -= walletBalanceRequest.withdrawAmt
         
-    except (HTTPException) as e:
+        await set_cache_value(wallet_balance_key, wallet_balance.dict())
+        return wallet_balance
+        
+    except (HTTPException, CachedDataException, Exception) as e:
         logging.error("Error set_wallet_balance, {e}")
         return {"error": str(e)}
     
@@ -234,14 +232,16 @@ def calculate_order_cost(order_request: OrderRequest, max_leverage: str) -> floa
 
     return initial_margin + fee_to_open_position + fee_to_close_position
 
+
 async def update_wallet_balance(wallet_balance: WalletBalance):
     try:
         wallet_balance_key = "wallet_balance"
-        set_cache_value(wallet_balance_key, json.dumps(wallet_balance.dict()))
+        await set_cache_value(wallet_balance_key, wallet_balance.dict())
     except Exception as e:
         logging.error(f"Error update_wallet_balance, {e}")
         raise e
-    
+
+
 async def get_wallet_balance() -> WalletBalance:
     try:
         wallet_balance_data = await get_cache_value("wallet_balance")
@@ -253,6 +253,20 @@ async def get_wallet_balance() -> WalletBalance:
     except Exception as e:
         logging.error("Error get_wallet_balance, {e}")
         return {"error": str(e)}
+
+
+async def get_risk_limits_for_symbol(symbol:str) -> RiskLimit:
+    try:
+        risk_limit_data = await get_cache_value(f"risk_limits:{symbol}")
+        if risk_limit_data:
+            risk_limits = RiskLimit(**json.loads(risk_limit_data))
+            return risk_limits
+        else:
+            raise CachedDataException("No cached data for risk limits")
+    except Exception as e:
+        logging.error("Error get_risk_limits_for_symbol, {e}")
+        return {"error": str(e)}
+    
 
 async def get_cache_value(key: str):
     try:        
@@ -312,14 +326,14 @@ async def positions_websocket(websocket: WebSocket):
     except WebSocketDisconnect:
         positions_websockets.remove(websocket)
 
-async def send_orders_update(order):
+async def send_orders_update(order:str):
     try:
         for websocket in orders_websockets:
             await websocket.send_json(order)
     except Exception as e:
         logging.error(f"Error ws orders update: {e}")
 
-async def send_positions_update(position):
+async def send_positions_update(position:str):
     try:
         for websocket in positions_websockets:
             await websocket.send_json(position)
@@ -328,7 +342,7 @@ async def send_positions_update(position):
 
 # --------------------------- BACKGROUND TASKS -------------------------------
 
-async def produce_topic_orders_executed(app, order: Order):
+async def produce_topic_orders_executed(order: Order):
     try:
         producer = app.state.kafka_producer
         message = json.dumps(order)
@@ -361,7 +375,7 @@ async def consume_topic_orders_resolved(consumer):
         await consumer.stop()
 
 
-async def consume_topic_positions_updated(consumer):
+async def consume_topic_positions_updated(consumer, exit_on_message=False):
     try:
         while True:
             logging.warning("Starting: consume_positions_updated")
@@ -375,7 +389,7 @@ async def consume_topic_positions_updated(consumer):
                     logging.warning(f"Received order from topic resolved_orders: {updated_position}")
 
                     # Send the updated order to the WebSocket queue to update the UI
-                    await send_positions_update(updated_position)
+                    await send_positions_update(updated_position)            
     except Exception as e:
         logging.error(f"Error consume_topic_positions_updated: {e}")
     finally:
