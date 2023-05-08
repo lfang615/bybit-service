@@ -22,7 +22,7 @@ services:
 
   redis-master:
     build:
-      context: ./redis
+      context: ./service-configs/redis
       dockerfile: Dockerfile.master
     container_name: redis-master
     ports:
@@ -32,22 +32,21 @@ services:
 
   redis-slave:
     build:
-      context: ./redis
+      context: ./service-configs/redis
       dockerfile: Dockerfile.slave
     container_name: redis-slave
     ports:
       - "6380:6379"
-    environment:
-      - REDIS_MASTER_SERVICE_HOST=redis-master
     volumes:
       - redis-slave-data:/data
+      - ./service-configs/redis/redis-slave.conf:/usr/local/etc/redis/redis-slave.conf
 
   mongo:
     image: "mongo:latest"
     volumes:
-      - "mongo_data:/data/db"
+      - "mongo-data:/data/db"
     env_file:
-      - ./configs/mongo/.env.mongo
+      - ./service-configs/mongo/.env.mongo
 
   kafka:
     image: "confluentinc/cp-kafka:latest"
@@ -73,3 +72,4 @@ services:
 volumes:
   redis-master-data:
   redis-slave-data:
+  mongo-data:
