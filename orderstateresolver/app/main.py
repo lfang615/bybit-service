@@ -205,6 +205,7 @@ async def symbols_updater_task() -> None:
         else:
             await asyncio.sleep(60)  # Sleep for a minute before retrying
     
+
 # ------------------Background task to update the risk limits cache ------------------
 async def update_risk_limits_cache() -> bool:
     try:
@@ -213,9 +214,9 @@ async def update_risk_limits_cache() -> bool:
         if response['retCode'] == 0:
             risk_limits = response["result"]["list"]
 
-            # Personal risk limit settings
-            lowest_risk_limits = [limit for limit in risk_limits if limit["isLowestRisk"] == 1]
-            await set_cache_value("risk_limits", lowest_risk_limits)
+            for limit in [r for r in risk_limits if r["isLowestRisk"] == 1]:
+                await set_cache_value(f"risk_limits:{limit['symbol']}", limit)
+
             logging.log(logging.WARNING, f"Risk limits cache updated")
             return True
         else:
