@@ -2,6 +2,13 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional
 from enum import Enum
 
+
+class ExchangeID(str, Enum):
+    BYBIT = "BYBIT"
+    BITGET = "BITGET"
+    BINANCE = "BINANCE"
+    COINBASE = "COINBASE"
+
 class FloatAsString(float):
     @classmethod
     def __get_validators__(cls):
@@ -11,20 +18,18 @@ class FloatAsString(float):
     def validate(cls, value):
         return float(value)
     
-class OrderSide(Enum):
+class OrderSide(str, Enum):
     BUY = "Buy"
     SELL = "Sell"
 
-class OrderType(Enum):
+class OrderType(str, Enum):
     LIMIT = "Limit"
     MARKET = "Market"
     STOP_LIMIT = "StopLimit"
-    TAKE_PROFIT_LIMIT = "TakeProfit"
     STOP_MARKET = "StopMarket"
-    TAKE_PROFIT_MARKET = "TakeProfitMarket"
-    TRAILING_STOP_MARKET = "TrailingStopMarket"
+    TAKE_PROFIT_STOP_LOSS = "TPSL_Market"
 
-class OrderStatus(Enum):
+class OrderStatus(str, Enum):
     PENDING = "Pending" # This is a custom status
     NEW = "New"
     PARTIALLY_FILLED = "PartiallyFilled"
@@ -37,6 +42,15 @@ class OrderStatus(Enum):
     PENDINGCANCEL = "PendingCancel"
     UNTRIGGERED = "Untriggered"
     CREATED = "Created"
+
+class TimeInForce(str, Enum):
+    GTC = "GoodTillCancel"
+    IOC = "ImmediateOrCancel"
+    FOK = "FillOrKill"
+
+class PositionAction(str, Enum):
+    OPEN = "Open"
+    CLOSE = "Close"
     
 class Order(BaseModel):
     symbol: str
@@ -46,7 +60,7 @@ class Order(BaseModel):
     qty: FloatAsString
     orderLinkId: str
     orderId: str
-    timeInForce: str
+    timeInForce: TimeInForce
     orderStatus: Optional[OrderStatus]
     positionIdx: Optional[str]
     triggerBy: Optional[str]
@@ -69,6 +83,15 @@ class Order(BaseModel):
     closeOnTrigger: Optional[str]
     cancelType: Optional[str]
     iv: Optional[str] # Implied Volatility
+
+    
+    class Config:
+        json_encoders = {
+            OrderType: lambda x: x.value,
+            OrderStatus: lambda x: x.value,
+            OrderSide: lambda x: x.value,
+            TimeInForce: lambda x: x.value,
+        }
 
     def __eq__(self, other):
         if isinstance(other, Order):
@@ -138,16 +161,52 @@ class OrderRequest(BaseModel):
     orderLinkId: str = Field(default="")
     symbol: str
     side: str
-    orderType: str
+    orderType: OrderType
     qty: str
     price: Optional[str] = None
-    timeInForce: str
+    timeInForce: TimeInForce
     triggerDirection: Optional[int] = None
     triggerPrice: Optional[str] = None  
     takeProfit: Optional[str] = None # ENTIRE POSITION WILL EXIT AT THIS PRICE
     stopLoss: Optional[str] = None # ENTIRE POSITION WILL EXIT AT THIS PRICE
     reduceOnly: Optional[bool] = None # When reduceOnly=True, takeProfit and stopLoss will be ignored
     closeOnTrigger: Optional[bool] = None
+    positionIdx: Optional[int] = None
+
+    class Config:
+        json_encoders = {
+            OrderType: lambda x: x.value,
+            OrderStatus: lambda x: x.value,
+            OrderSide: lambda x: x.value,
+            TimeInForce: lambda x: x.value,
+        }
+
+    @validator("price", always=True)
+    def validate_price(cls, price, values):
+        order_type = values.get("orderType")
+        if order_type == OrderType.LIMIT and price is None:
+            raise ValueError("Price is required for Limit orders")
+        if order_type == OrderType.MARKET and price is not None:
+            raise ValueError("Price must not be set for Market orders")
+        if order_type == OrderType.TAKE_PROFIT_STOP_LOSS and price is not None:
+            raise ValueError("Only TriggerPrice is required for TAKE_PROFIT_STOP_LOSS orders")
+        return price
+
+    @validator("triggerPrice", always=True)
+    def validate_trigger_price(cls, trigger_price, values):
+        order_type = values.get("orderType")
+        if order_type == OrderType.STOP_LIMIT and trigger_price is None:
+            raise ValueError("TriggerPrice is required for StopLimit orders")
+        if order_type == OrderType.STOP_MARKET and trigger_price is None:
+            raise ValueError("TriggerPrice is required for StopMarket orders")
+        return trigger_price
+
+    @validator("takeProfit", "stopLoss", always=True)
+    def validate_take_profit_stop_loss(cls, value, values):
+        order_type = values.get("orderType")
+        if order_type == OrderType.TAKE_PROFIT_STOP_LOSS and value is None:
+            raise ValueError("TakeProfit and StopLoss are required for TPSL_Market orders")
+        return value
 
 
 class EditOrderRequest(BaseModel):
@@ -166,11 +225,6 @@ class RetrieveOrdersRequest(BaseModel):
 class CancelRequest(BaseModel):
     orderLinkId: str
 
-class LeverageRequest(BaseModel):
-    symbol: str
-    buyLeverage: Optional[str] = None
-    sellLeverage: Optional[str] = None
-
 class WalletBalanceRequest(BaseModel):
     depositAmt: Optional[float]
     withdrawAmt: Optional[float]
@@ -181,12 +235,24 @@ class WalletBalance(BaseModel):
     positionBalance: float
     availableBalance: float
     currency: str = "USDT"
-    
+
+
 class RiskLimit(BaseModel):
     id: str
     symbol: str
-    riskLimitValue: str
-    maintenanceMargin: float
+    limit: str
+    maintainMargin: float
     initialMargin: str
-    isLowestRiskLimit: int
+    isLowestRisk: int
+    maxLeverage: str
+
+class LeverageRequest(BaseModel):
+    symbol: str
+    buyLeverage: Optional[str] = None
+    sellLeverage: Optional[str] = None
+
+class LeverageResponse(BaseModel):
+    symbol: str
+    buyLeverage: Optional[str] = None
+    sellLeverage: Optional[str] = None
     maxLeverage: str
