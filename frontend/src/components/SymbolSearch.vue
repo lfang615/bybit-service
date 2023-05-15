@@ -29,12 +29,17 @@
 import axios from "axios";
 
 export default {
+  computed: {
+    apiUrl() {
+      return `${process.env.VUE_APP_API_BASE_URL}`;
+    }
+  },
   data() {
     return {
       searchText: "",
       symbols: [],
       filteredSymbols: [],
-      isActive: true
+      isActive: true,
     };
   },
   async created() {
@@ -43,10 +48,18 @@ export default {
   methods: {
     async fetchSymbols() {
       try {
-        const response = await axios.get("http://localhost:8000/symbols");
+        const response = await axios.get(this.apiUrl + "/symbols");
         this.symbols = response.data;
       } catch (error) {
         console.error("Error fetching symbols:", error);
+      }
+    },
+    async fetchRiskLimit(symbol){
+      try {
+        const response = await axios.get(this.apiUrl + "/risk_limits" + "/" + symbol);
+        return response.data;
+      } catch (error) {
+        console.error("Error fetching risk limit:", error);
       }
     },
     filterSymbols() {
@@ -55,10 +68,13 @@ export default {
         symbol.toLowerCase().startsWith(searchTextLowerCase)
       );
     },
-    onSelection(symbol) {
+    async onSelection(symbol) {
       this.searchText = symbol;
       this.filteredSymbols = [];
       this.$emit('selected-symbol', symbol)
+      const riskLimit = await this.fetchRiskLimit(symbol);
+      this.$emit('risk-limit', riskLimit)
+
     },
     clearSearch() {
       this.searchText = "";

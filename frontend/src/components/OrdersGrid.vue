@@ -7,9 +7,35 @@
         <input @click="displayType = 'currentOrders'" type="radio" class="btn-check" name="btnradio" id="btnradio2" autocomplete="off">
         <label class="btn btn-outline-primary" for="btnradio2">Current Orders</label>
       </div>
-      <button @click="refreshOrders" class="btn btn-outline-secondary">Refrersh Orders</button>
+      <button @click="refreshGrid" class="btn btn-outline-secondary">Refrersh Grid</button>
   </div>
-    <table class="table" v-if="displayedOrders.length">
+
+  <table class="table" v-show="displayType == 'positions'">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Side</th>
+          <th>Qty</th>
+          <th>AEP</th>
+          <th>Status</th>
+          <th>StopOrderType</th>
+          <th>OpenDate</th>          
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="position in positions" :key="position.symbol">
+          <td>{{ position.symbol }}</td>
+          <td>{{ position.side }}</td>
+          <td>{{ position.qty }}</td>
+          <td>{{ position.price }}</td>                    
+          <td>{{ position.orderStatus }}</td>
+          <td>{{ position.stopLoss }}</td>
+          <td>{{ position.takeProfit }}</td>
+          <td>{{ position.openDate }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <table class="table" v-show="displayType == 'currentOrders'">
       <thead>
         <tr>
           <th>Order ID</th>
@@ -23,7 +49,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="order in displayedOrders" :key="order.orderId">
+        <tr v-for="order in orders" :key="order.orderId">
           <td>{{ order.orderId }}</td>
           <td>{{ order.symbol }}</td>
           <td>{{ order.orderType }}</td>
@@ -32,21 +58,15 @@
           <td>{{ order.price }}</td>                    
           <td>{{ order.orderStatus }}</td>
           <td>{{ order.stopOrderType }}</td>
-          <td v-if="displayType === 'currentOrders'">
+          <td>
             <button class="btn btn-sm btn-primary" @click.stop="editOrder(order)">Edit</button>
           </td>
-          <td v-if="displayType === 'currentOrders'">
+          <td>
             <button class="btn btn-sm btn-danger" @click.stop="cancelOrder(order)">Cancel</button>
-          </td> <td v-if="displayType === 'currentOrders'">
-            <button class="btn btn-sm btn-primary" @click.stop="editOrder(order)">Edit</button>
-          </td>
-          <td v-if="displayType === 'currentOrders'">
-            <button class="btn btn-sm btn-danger" @click.stop="cancelOrder(order)">Cancel</button>
-          </td>
+          </td> 
         </tr>
       </tbody>
     </table>
-    <p v-else>No orders found.</p>
   </div>
 </template>
 
@@ -56,23 +76,14 @@ import axios from "axios";
 export default {
   data() {
     return {
-      socket: null,
+      positions: [],
+      socketOrders: null,
+      socketPositions: null,
       orders: [],
       displayType: 'positions',
       showEditOrderModal: false,
       selectedOrder: null,
     };
-  },
-  computed: {
-    positions() {
-      return this.orders.filter(order => order.orderStatus === "Filled" || order.orderStatus === "PartiallyFilled");
-    },
-    currentOrders() {
-      return this.orders.filter(order => order.orderStatus === "PartiallyFilled" || order.reduceOnly === true);
-    },
-    displayedOrders() {
-      return this.displayType === 'positions' ? this.positions : this.currentOrders;
-    },
   },
   created() {
     this.connect();
@@ -81,7 +92,7 @@ export default {
   methods: {
     async refreshOrders() {
       try {
-        const response = await axios.get('http://localhost:8000/refresh_orders');
+        const response = await axios.get('http://localhost:5000/refresh_orders');
         this.orders = response.data;
       } catch (error) {
         console.error('Failed to fetch orders:', error);
@@ -95,7 +106,7 @@ export default {
 
     cancelOrder(order){
       try{
-        const response = axios.post('http://localhost:8000/cancel_order', {
+        const response = axios.post('http://localhost:5000/cancel_order', {
           orderId: order.orderId,
         });
         if(response.data['retCode'] === 0){
@@ -110,18 +121,32 @@ export default {
 
     async fetchOrders(){
       try {
-        const response = await axios.get('http://localhost:8000/open_positions_orders');
+        const response = await axios.get('http://localhost:5000/orders');
         this.orders = response.data;
       } catch (error) {
         console.error('Failed to fetch orders:', error);
       }
     },
+    async fetchPositions(){
+      try{
+        const response = await axios.get('http://localhost:5000/positions');
+        this.positions = response.data;
+      } catch(error){
+        console.error('Failed to fetch positions:', error);
+      }
+    },
     connect() {
-      this.socket = new WebSocket('ws://localhost:8000/ws/order_updates');
-      this.socket.addEventListener('open', this.onOpen);
-      this.socket.addEventListener('error', this.onError);
-      this.socket.addEventListener('close', this.onClose);
-      this.socket.addEventListener('message', this.onMessage);
+      this.socketOrders = new WebSocket(`ws://${process.env.VUE_APP_API_BASE_URL}/ws/orders`);
+      this.socketOrders.addEventListener('open', this.onOpen);
+      this.socketOrders.addEventListener('error', this.onError);
+      this.socketOrders.addEventListener('close', this.onClose);
+      this.socketOrders.addEventListener('message', this.onMessage);
+
+      this.socketPositions = new WebSocket(`ws://${process.env.VUE_APP_API_BASE_URL}/ws/positions`);
+      this.socketPositions.addEventListener('open', this.onOpen);
+      this.socketPositions.addEventListener('error', this.onError);
+      this.socketPositions.addEventListener('close', this.onClose);
+      this.socketPositions.addEventListener('message', this.onMessage);
     },
     onOpen(event) {
       console.log('WebSocket connected:', event);
