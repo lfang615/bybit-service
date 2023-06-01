@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from ordermanager.app.models.order import OrderRequest, Order, WalletBalance, WalletBalanceRequest, \
     RiskLimit, OrderStatus, OrderSide, OrderType, TimeInForce, PositionAction, ExchangeID
 from ordermanager.app.models.position import Position
-from ordermanager.app.services.abstractexchange import CryptoExchangeAPI
+from ordermanager.app.services.cryptoexchangeapi import CryptoExchangeAPI
 from ordermanager.app.services.bybitorderstrategy import OrderStrategy, BybitOrderStrategy
 from ordermanager.app.main import app, User, calculate_order_cost, place_order, set_wallet_balance, get_wallet_balance, \
     crypto_exchange_factory, get_exchange_api
@@ -460,7 +460,9 @@ async def test_place_order_multiple_orders_wallet_reload(jwt_token, mock_redis, 
        
 
 
-# ------------Test WebSocket connections ----------------
+"""
+Test WebSocket connections
+"""
 
 @pytest.mark.asyncio
 async def test_send_positions_update():
@@ -495,8 +497,12 @@ async def test_send_positions_update():
         await websocket.close()
 
     client = TestClient(app)
+
+    headers = {
+        "Authorization": f"Bearer {jwt_token}",
+    }
     
-    with client.websocket_connect("/ws/positions") as websocket:
+    with client.websocket_connect("/ws/positions", headers=headers) as websocket:
         # Send the position message via websocket
         # Wait for a response
         received_position_text = websocket.receive_text()
@@ -528,8 +534,12 @@ async def test_send_orders_update():
         await websocket.close()
 
     client = TestClient(app)
+
+    headers = {
+        "Authorization": f"Bearer {jwt_token}",
+    }
     
-    with client.websocket_connect("/ws/orders") as websocket:
+    with client.websocket_connect("/ws/orders", headers=headers) as websocket:
         # Send the position message via websocket
         # Wait for a response
         received_position_text = websocket.receive_text()
